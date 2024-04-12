@@ -127,9 +127,9 @@ def main():
     load_dotenv()
     driver, wait = initialize_driver()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
-    profile = 'V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Direção de Secretaria / Diretor de Secretaria'
-    classeJudicial, nomeParte = 'EXECUÇÃO FISCAL', 'MUNICIPIO DE RIO REAL BAHIA'
-    optionSearch= {classeJudicial:"EXECUÇÃO FISCAL"}
+    profile = ""
+    classeJudicial, nomeParte = ""
+    optionSearch= {classeJudicial:""}
     login(driver, wait, user, password)
     skip_token(driver, wait)
     select_profile(driver, wait, profile)
