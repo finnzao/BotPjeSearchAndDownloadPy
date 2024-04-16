@@ -4,12 +4,14 @@ from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from openpyxl import Workbook
+from openpyxl.styles import Font
+
 from dotenv import load_dotenv
 import os
 
 def initialize_driver():
     driver = webdriver.Chrome()
-    wait = WebDriverWait(driver, 10)
+    wait = WebDriverWait(driver, 20)
     return driver, wait
 
 
@@ -43,7 +45,7 @@ def select_profile(driver, wait, profile):
     desired_button.click()
 
 
-def search_process(driver, wait, classeJudicial:str, nomeParte:str,numOrgaoJustica:int,numeroOAB:int):
+def search_process(driver, wait, classeJudicial:str='', nomeParte:str='',numOrgaoJustica:int='0216',numeroOAB:int='',estadoOAB:int=''):
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
     icon_search_button = wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, 'li#liConsultaProcessual i.fas.fa-search'))
@@ -51,22 +53,24 @@ def search_process(driver, wait, classeJudicial:str, nomeParte:str,numOrgaoJusti
     icon_search_button.click()
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'frameConsultaProcessual')))
     
-    numeroOAB = wait.until(EC.presence_of_element_located((By.ID, 'fPP:decorationDados:numeroOAB')))
-    numeroOAB.send_keys(numeroOAB)
+
    
-    numOrgaoJutica = wait.until(EC.presence_of_element_located((By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica')))
-    numOrgaoJutica.send_keys(numOrgaoJustica)
+    ElementoNumOrgaoJutica = wait.until(EC.presence_of_element_located((By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica')))
+    ElementoNumOrgaoJutica.send_keys(numOrgaoJustica)
    
     #OAB
-    estadoOAB = driver.find_element_by_id('fPP:decorationDados:ufOABCombo')
-    listaEstadosOAB = Select(estadoOAB)
-    listaEstadosOAB.select_by_value('4')# 4 .:. BA
+    if estadoOAB:
+        ElementoNumeroOAB = wait.until(EC.presence_of_element_located((By.ID, 'fPP:decorationDados:numeroOAB')))
+        ElementoNumeroOAB.send_keys(numeroOAB)
+        ElementoEstadosOAB = wait.until(EC.presence_of_element_located((By.ID, 'fPP:decorationDados:ufOABCombo')))
+        listaEstadosOAB = Select(ElementoEstadosOAB)
+        listaEstadosOAB.select_by_value(estadoOAB)# 4 .:. BA
     
     consulta_classe = wait.until(EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial')))
     consulta_classe.send_keys(classeJudicial)
     
-    nomeDaParte = wait.until(EC.presence_of_element_located((By.ID, 'fPP:j_id150:nomeParte')))
-    nomeDaParte.send_keys(nomeParte)
+    ElementonomeDaParte = wait.until(EC.presence_of_element_located((By.ID, 'fPP:j_id150:nomeParte')))
+    ElementonomeDaParte.send_keys(nomeParte)
     
     btnProcurarProcesso = wait.until(EC.presence_of_element_located((By.ID, 'fPP:searchProcessos')))
     btnProcurarProcesso.click()
@@ -102,7 +106,7 @@ def collect_process_numbers(driver, wait):
             )
             next_page_button.click()
         except Exception as e:
-            print(f"Erro ao clicar no botão de próxima página: {e}")
+            print(f"Fim da pagina")
             break   
 
     # Converter a lista de números dos processos em um conjunto para remover duplicatas
@@ -113,13 +117,17 @@ def collect_process_numbers(driver, wait):
 
     return numUnicosLista
 
-def save_to_excel(process_numbers, filename="./docs/numeros_dos_processos.xlsx"):
+def save_to_excel(process_numbers, filename="ResultadoProcessosPesquisa"):
+    dir =f"./docs/{filename}.xlsx"
     wb = Workbook()
     ws = wb.active
-    ws.title = "Processos"
-    for row, processo in enumerate(process_numbers, start=1):
+    ws.title = filename
+    bold_font = Font(bold=True, size=16)
+    ws["A1"]= "Processos"
+    ws["A1"].font = bold_font
+    for row, processo in enumerate(process_numbers, start=2):
         ws[f"A{row}"] = processo
-    wb.save(filename=filename)
+    wb.save(filename=dir)
     print(f"Arquivo '{filename}' criado com sucesso.")
 
 
@@ -127,14 +135,13 @@ def main():
     load_dotenv()
     driver, wait = initialize_driver()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
-    profile = ""
-    classeJudicial, nomeParte = ""
-    optionSearch= {classeJudicial:""}
+    profile = os.getenv("PROFILE")
+    optionSearch= {'classeJudicial':"EXECUÇÃO FISCAL", 'nomeParte':''}
     login(driver, wait, user, password)
     skip_token(driver, wait)
     select_profile(driver, wait, profile)
     
-    search_process(driver, wait, optionSearch.classJudicial, nomeParte)
+    search_process(driver, wait, optionSearch['classeJudicial'], optionSearch['nomeParte'])
     process_numbers = collect_process_numbers(driver, wait)
     save_to_excel(process_numbers)
     driver.quit()
