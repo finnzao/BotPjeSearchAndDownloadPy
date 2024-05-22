@@ -39,6 +39,8 @@ def select_profile(driver, wait, profile):
     dropdown = wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'dropdown-toggle')))
     dropdown.click()
     button_xpath = f"//a[contains(text(), '{profile}')]"
+    driver.execute_script("arguments[0].click();", desired_button)
+
     desired_button = wait.until(
         EC.element_to_be_clickable((By.XPATH, button_xpath))
     )
@@ -80,27 +82,21 @@ def collect_process_numbers(driver, wait):
     WebDriverWait(driver, 50).until(EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb')))
     numProcessos = []
     while True:
-        # Aguarde até que os links dos processos estejam visíveis
         WebDriverWait(driver, 50).until(
             EC.visibility_of_all_elements_located((By.CSS_SELECTOR, "a.btn-link.btn-condensed"))
         )
 
-        # Encontre todos os links dos processos na página atual
         links_dos_processos = driver.find_elements(By.CSS_SELECTOR, "a.btn-link.btn-condensed")
 
-        # Extraia o número do processo de cada link e adicione à lista
         for link in links_dos_processos:
             numero_do_processo = link.get_attribute('title')
             numProcessos.append(numero_do_processo)
 
-        # Tenta encontrar o botão de próxima página e clicar nele
         try:    
-            # Aguardar até que o elemento que está interceptando o clique desapareça
             wait.until(
                 EC.invisibility_of_element((By.ID, 'j_id136:modalStatusCDiv'))
             )
             
-            # Depois que o elemento desaparecer, tente clicar no botão de próxima página novamente
             next_page_button = wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//td[contains(@onclick, 'next')]"))
             )
@@ -109,10 +105,8 @@ def collect_process_numbers(driver, wait):
             print(f"Fim da pagina")
             break   
 
-    # Converter a lista de números dos processos em um conjunto para remover duplicatas
     numUnico = set(numProcessos)
 
-    # Converter o conjunto de volta para uma lista, se necessário
     numUnicosLista = list(numUnico)
 
     return numUnicosLista
@@ -134,12 +128,13 @@ def save_to_excel(process_numbers, filename="ResultadoProcessosPesquisa"):
 def main():
     load_dotenv()
     driver, wait = initialize_driver()
-    user, password = os.getenv("USER"), os.getenv("PASSWORD")
-    profile = os.getenv("PROFILE")
-    optionSearch= {'classeJudicial':"EXECUÇÃO FISCAL", 'nomeParte':''}
+    user, password,profile = os.getenv("USER"), os.getenv("PASSWORD"),os.getenv("PROFILE")
+    print(profile)
+    #classeJudicial, nomeParte = 'EXECUÇÃO FISCAL', 'MUNICIPIO DE RIO REAL BAHIA'
+    optionSearch= {'classeJudicial':"EXECUÇÃO FISCAL", 'nomeParte':'MUNICIPIO DE RIO REAL BAHIA'}
     login(driver, wait, user, password)
     skip_token(driver, wait)
-    select_profile(driver, wait, profile)
+    select_profile(driver, wait, "V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
     
     search_process(driver, wait, optionSearch['classeJudicial'], optionSearch['nomeParte'])
     process_numbers = collect_process_numbers(driver, wait)
