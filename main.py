@@ -89,7 +89,9 @@ def collect_process_numbers(driver, wait):
         links_dos_processos = driver.find_elements(By.CSS_SELECTOR, "a.btn-link.btn-condensed")
 
         # Extraia o número do processo de cada link e adicione à lista
+        # class="text-muted" total de processos / 20 por paginação
         for link in links_dos_processos:
+            print(link.get_attribute('title'))
             numero_do_processo = link.get_attribute('title')
             numProcessos.append(numero_do_processo)
 
@@ -116,18 +118,25 @@ def collect_process_numbers(driver, wait):
     return numUnicosLista
 
 def save_to_excel(process_numbers, filename="ResultadoProcessosPesquisa"):
-    dir =f"./docs/{filename}.xlsx"
+    # Definir o caminho do arquivo
+    dir_path = "./docs"
+    file_path = f"{dir_path}/{filename}.xlsx"
+    
+    if not os.path.exists(dir_path):
+        os.makedirs(dir_path)
+    
     wb = Workbook()
     ws = wb.active
     ws.title = filename
     bold_font = Font(bold=True, size=16)
-    ws["A1"]= "Processos"
+    ws["A1"] = "Processos"
     ws["A1"].font = bold_font
+    
     for row, processo in enumerate(process_numbers, start=2):
         ws[f"A{row}"] = processo
-    wb.save(filename=dir)
-    print(f"Arquivo '{filename}' criado com sucesso.")
 
+    wb.save(filename=file_path)
+    print(f"Arquivo '{file_path}' criado com sucesso.")
 
 def main():
     load_dotenv()
@@ -135,10 +144,10 @@ def main():
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
     profile = os.getenv("PROFILE")
     #classeJudicial, nomeParte = 'EXECUÇÃO FISCAL', 'MUNICIPIO DE RIO REAL BAHIA'
-    optionSearch= {'classeJudicial':"EXECUÇÃO FISCAL", 'nomeParte':'MUNICIPIO DE RIO REAL BAHIA'}
+    optionSearch= {'classeJudicial':"Guarda", 'nomeParte':''}
     login(driver, wait, user, password)
-    skip_token(driver, wait)
-    select_profile(driver, wait, profile)
+    #skip_token(driver, wait)
+    #select_profile(driver, wait, profile)
     
     search_process(driver, wait, optionSearch['classeJudicial'], optionSearch['nomeParte'])
     process_numbers = collect_process_numbers(driver, wait)
