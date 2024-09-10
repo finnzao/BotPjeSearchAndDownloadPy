@@ -3,12 +3,9 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
-from openpyxl import Workbook
-from openpyxl.styles import Font
-
 from dotenv import load_dotenv
 import os
-import math
+import json
 
 def initialize_driver():
     driver = webdriver.Chrome()
@@ -36,22 +33,13 @@ def skip_token(driver, wait):
 def select_profile(driver, wait, profile):
     dropdown = wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'dropdown-toggle')))
     dropdown.click()
-
     button_xpath = f"//a[contains(text(), '{profile}')]"
-    
-    desired_button = wait.until(EC.element_to_be_clickable((By.XPATH, button_xpath)))
+    desired_button = wait.until(
+        EC.element_to_be_clickable((By.XPATH, button_xpath))
+    )
+    desired_button.click()
 
-    try:
-        wait.until(EC.invisibility_of_element_located((By.CLASS_NAME, 'overlay')))
-    except:
-        pass
-
-    driver.execute_script("arguments[0].scrollIntoView(true);", desired_button)
-    driver.execute_script("arguments[0].click();", desired_button)
-
-
-
-def search_process(driver, wait, classeJudicial:str='', nomeParte:str='',numOrgaoJustica:int='0216',numeroOAB:int='',estadoOAB:int=''):
+def search_process(driver, wait, classeJudicial='', nomeParte='', numOrgaoJustica='0216', numeroOAB='', estadoOAB=''):
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
     icon_search_button = wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, 'li#liConsultaProcessual i.fas'))
@@ -59,12 +47,10 @@ def search_process(driver, wait, classeJudicial:str='', nomeParte:str='',numOrga
     icon_search_button.click()
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'frameConsultaProcessual')))
     
-
-   
     ElementoNumOrgaoJutica = wait.until(EC.presence_of_element_located((By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica')))
     ElementoNumOrgaoJutica.send_keys(numOrgaoJustica)
    
-    #OAB
+    # OAB
     if estadoOAB:
         ElementoNumeroOAB = wait.until(EC.presence_of_element_located((By.ID, 'fPP:decorationDados:numeroOAB')))
         ElementoNumeroOAB.send_keys(numeroOAB)
@@ -82,30 +68,9 @@ def search_process(driver, wait, classeJudicial:str='', nomeParte:str='',numOrga
     btnProcurarProcesso.click()
 
 def collect_process_numbers(driver, wait):
-    # Aguarde até que o elemento que contém o número total de resultados esteja presente
-    WebDriverWait(driver, 50).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "div.pull-right span.text-muted"))
-    )
-    
-    # Inicialize o total de resultados como None
-    total_resultados = None
-    
-    # Continue tentando extrair o número total de resultados até que seja bem-sucedido
-    while total_resultados is None:
-        try:
-            # Obtenha o texto que contém o número total de resultados
-            total_resultados_texto = driver.find_element(By.CSS_SELECTOR, "div.pull-right span.text-muted").text
-            total_resultados = int(total_resultados_texto.split()[0])  # Extrai o número total de resultados
-        except (ValueError, IndexError):
-            # Se a extração falhar, continue tentando
-            continue
-    
-    itens_por_pagina = 20  # Número esperado de itens por página
-    total_paginas = math.ceil(total_resultados / itens_por_pagina)  # Calcula o número total de páginas
-    
+    WebDriverWait(driver, 50).until(EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb')))
     numProcessos = []
-
-    for pagina in range(total_paginas):
+    while True:
         # Aguarde até que os links dos processos estejam visíveis
         WebDriverWait(driver, 50).until(
             EC.visibility_of_all_elements_located((By.CSS_SELECTOR, "a.btn-link.btn-condensed"))
@@ -119,100 +84,55 @@ def collect_process_numbers(driver, wait):
             numero_do_processo = link.get_attribute('title')
             numProcessos.append(numero_do_processo)
 
-        # Verifique se estamos na última página
-        if pagina == total_paginas - 1:
-            print("Fim da paginação")
-            break
-
-        # Tente clicar no botão de próxima página
-        try:
+        # Tenta encontrar o botão de próxima página e clicar nele
+        try:    
+            # Aguardar até que o elemento que está interceptando o clique desapareça
+            wait.until(
+                EC.invisibility_of_element((By.ID, 'j_id136:modalStatusCDiv'))
+            )
+            
+            # Depois que o elemento desaparecer, tente clicar no botão de próxima página novamente
             next_page_button = wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//td[contains(@onclick, 'next')]"))
             )
             next_page_button.click()
         except Exception as e:
-            print("Erro ao tentar clicar no botão de próxima página:", e)
-            break
+            print("Fim da pagina")
+            break   
 
     numUnico = set(numProcessos)
     numUnicosLista = list(numUnico)
     return numUnicosLista
 
-def save_to_excel(process_numbers, filename="ResultadoProcessosPesquisa"):
+def save_to_json(data, filename="ResultadoProcessosPesquisa.json"):
     # Definir o caminho do arquivo
     dir_path = "./docs"
-    file_path = f"{dir_path}/{filename}.xlsx"
+    file_path = f"{dir_path}/{filename}"
     
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
     
-    wb = Workbook()
-    ws = wb.active
-    ws.title = filename
-    bold_font = Font(bold=True, size=16)
-    ws["A1"] = "Processos"
-    ws["A1"].font = bold_font
+    with open(file_path, 'w', encoding='utf-8') as json_file:
+        json.dump(data, json_file, ensure_ascii=False, indent=4)
     
-    for row, processo in enumerate(process_numbers, start=2):
-        ws[f"A{row}"] = processo
-
-    wb.save(filename=file_path)
     print(f"Arquivo '{file_path}' criado com sucesso.")
 
-def nav_tag(driver,wait):
-    wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
-    tag_button = wait.until(
-        EC.element_to_be_clickable((By.CSS_SELECTOR, 'li#liEtiquetas i.fas'))
-    ) 
-    tag_button.click()
-
-def search_on_tag(driver,wait,search):
-
-    nav_tag(driver,wait)
-
-    input_tag(driver,wait,search)
-
-    click_element_on_result(driver,wait)
-
-
-def input_tag(driver, wait, search_text):
-    search_input = wait.until(EC.element_to_be_clickable((By.ID, "itPesquisarEtiquetas")))
-    
-    search_input.clear()
-
-    search_input.send_keys(search_text)
-    
-    search_button = driver.find_element(By.CSS_SELECTOR, "button.btn.btn-default.btn-pesquisa[title='Pesquisar']")
-    
-    search_button.click()
-
-def click_element_on_result(driver, wait):
-    # XPath based on classes
-    element_xpath = "//li[contains(@class, 'nivel-1') and contains(@class, 'etiqueta')]//input[@type='checkbox']"
-    
-    # Wait until the element is clickable
-    target_element = wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
-    
-    # Scroll the element into view
-    driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
-    
-    # Click the element
-    target_element.click()
 def main():
     load_dotenv()
     driver, wait = initialize_driver()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
     profile = os.getenv("PROFILE")
-    #classeJudicial, nomeParte = 'EXECUÇÃO FISCAL', 'MUNICIPIO DE RIO REAL BAHIA'
-    optionSearch= {'classeJudicial':"Curatela", 'nomeParte':''}
+    optionSearch = {'classeJudicial': "Curatela", 'nomeParte': ''}
     login(driver, wait, user, password)
     #skip_token(driver, wait)
-    select_profile(driver, wait, "V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
-    search_on_tag(driver,wait,"Cobrar Custas")
-    #search_process(driver, wait, optionSearch['classeJudicial'], optionSearch['nomeParte'])
-    #process_numbers = collect_process_numbers(driver, wait)
-    #save_to_excel(process_numbers)
+    #select_profile(driver, wait, profile)
+    
+    search_process(driver, wait, optionSearch['classeJudicial'], optionSearch['nomeParte'])
+    process_numbers = collect_process_numbers(driver, wait)
     driver.quit()
+    
+    # Salvar os números dos processos em formato JSON
+    save_to_json(process_numbers)
 
 if __name__ == "__main__":
     main()
