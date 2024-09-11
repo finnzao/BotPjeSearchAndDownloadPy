@@ -1,11 +1,12 @@
 from selenium import webdriver
+from selenium.webdriver.support.expected_conditions import StaleElementReferenceException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support.ui import Select
 from selenium.webdriver.support import expected_conditions as EC
 from openpyxl import Workbook
 from openpyxl.styles import Font
-
+import time
 from dotenv import load_dotenv
 import os
 import math
@@ -48,8 +49,6 @@ def select_profile(driver, wait, profile):
 
     driver.execute_script("arguments[0].scrollIntoView(true);", desired_button)
     driver.execute_script("arguments[0].click();", desired_button)
-
-
 
 def search_process(driver, wait, classeJudicial:str='', nomeParte:str='',numOrgaoJustica:int='0216',numeroOAB:int='',estadoOAB:int=''):
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
@@ -186,18 +185,35 @@ def input_tag(driver, wait, search_text):
     
     search_button.click()
 
-def click_element_on_result(driver, wait):
-    # XPath based on classes
-    element_xpath = "//li[contains(@class, 'nivel-1') and contains(@class, 'etiqueta')]//input[@type='checkbox']"
-    
-    # Wait until the element is clickable
-    target_element = wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
-    
-    # Scroll the element into view
-    driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
-    
-    # Click the element
-    target_element.click()
+def click_element_on_result(driver, wait, max_retries=3):
+    retries = 0
+    while retries < max_retries:
+        try:
+            # XPath based on classes
+            element_xpath = "//li[contains(@class, 'nivel-1') and contains(@class, 'etiqueta')]//input[@type='checkbox']"
+            
+            # Wait until the element is clickable
+            target_element = wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
+            
+            # Scroll the element into view
+            driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
+            
+            # Click the element
+            target_element.click()
+            break  # If click is successful, break the loop
+            
+        except StaleElementReferenceException:
+            # If a stale element exception is caught, retry
+            retries += 1
+            print(f"StaleElementReferenceException caught. Retrying... ({retries}/{max_retries})")
+        except Exception as e:
+            print(f"Error: {e}")
+            break
+
+    if retries == max_retries:
+        print(f"Failed to click the element after {max_retries} retries")
+    time.sleep(10)
+
 def main():
     load_dotenv()
     driver, wait = initialize_driver()

@@ -3,3 +3,4 @@ sshCLi
 sshCLi.pub
 /docs/
 /__pycache__/
+*.html
