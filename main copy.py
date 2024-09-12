@@ -154,11 +154,10 @@ def nav_tag(driver, wait):
 
 def search_on_tag(driver, wait, search):
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
-
     nav_tag(driver, wait)
     input_tag(driver, wait, search)
     click_element_on_result(driver, wait)
-
+    click_element_by_selector(css_selector='a.selecionarProcesso',driver=driver,max_retries=2,wait=wait)
 def input_tag(driver, wait, search_text):
     search_input = wait.until(EC.element_to_be_clickable((By.ID, "itPesquisarEtiquetas")))
     search_input.clear()
@@ -168,15 +167,20 @@ def input_tag(driver, wait, search_text):
 
 def click_element_on_result(driver, wait, max_retries=3):
     #driver.switch_to.default_content()
-    wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+    #wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
     retries = 0
     while retries < max_retries:
         try:
-            element_xpath = "//li[@class='nivel-1 col-sm-12 etiqueta']//span[@class='nome-etiqueta selecionada']"
-            target_element = wait.until(EC.presence_of_element_located((By.XPATH, element_xpath)))
-            print(target_element)
+            # Localize o elemento usando o seletor CSS
+            target_element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, 'div.ui-datalist-content .ui-datalist-data .nivel-1 .nome-etiqueta.selecionada')))
+
+            # Rola o elemento para a visualização
             driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
-            target_element = wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
+
+            # Espera até que o elemento esteja clicável
+            target_element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'div.ui-datalist-content .ui-datalist-data .nivel-1 .nome-etiqueta.selecionada')))
+
+            # Clica no elemento
             target_element.click()
             break
         except TimeoutException:
@@ -194,6 +198,40 @@ def click_element_on_result(driver, wait, max_retries=3):
             driver.switch_to.default_content()
     if retries == max_retries:
         print(f"Falha ao clicar no elemento após {max_retries} tentativas")
+
+
+def click_element_by_selector(driver, wait, css_selector, max_retries=3):
+    """
+    Clica em um elemento localizado pelo seletor CSS.
+    
+    :param driver: WebDriver instance
+    :param wait: WebDriverWait instance
+    :param css_selector: Seletor CSS do elemento a ser clicado
+    :param max_retries: Número máximo de tentativas em caso de falha
+    """
+    retries = 0
+    while retries < max_retries:
+        try:
+            # Localiza o elemento usando o seletor CSS
+            element = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, css_selector)))
+            
+            # Rola o elemento para a visualização
+            driver.execute_script("arguments[0].scrollIntoView(true);", element)
+            
+            # Espera até que o elemento esteja clicável
+            element = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, css_selector)))
+            
+            # Clica no elemento
+            element.click()
+            print("Elemento clicado com sucesso.")
+            break  # Sai do loop se o clique for bem-sucedido
+            
+        except Exception as e:
+            retries += 1
+            print(f"Tentativa {retries} falhou. Erro: {e}")
+            if retries >= max_retries:
+                print(f"Não foi possível clicar no elemento após {max_retries} tentativas")
+                raise e  # Relança a exceção após o número máximo de tentativas
 
 def main():
     load_dotenv()
