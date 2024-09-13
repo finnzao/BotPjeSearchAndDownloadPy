@@ -11,13 +11,37 @@ import time
 from dotenv import load_dotenv
 import os
 import math
+from functools import wraps
 
+# Variáveis globais para driver e wait
+driver = None
+wait = None
+
+# Decorador para gerenciar tentativas de execução com retry
+def retry(max_retries=2):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            retries = 0
+            while retries < max_retries:
+                try:
+                    return func(*args, **kwargs)
+                except (TimeoutException, StaleElementReferenceException) as e:
+                    retries += 1
+                    print(f"Tentativa {retries} falhou com erro: {e}. Tentando novamente...")
+                    if retries >= max_retries:
+                        raise TimeoutException(f"Falha ao executar {func.__name__} após {max_retries} tentativas")
+        return wrapper
+    return decorator
+
+# Inicialização do driver e wait
 def initialize_driver():
+    global driver, wait
     driver = webdriver.Chrome()
-    wait = WebDriverWait(driver, 20)
-    return driver, wait
+    wait = WebDriverWait(driver, 50)
 
-def login(driver, wait, user, password):
+@retry()
+def login(user, password):
     login_url = 'https://pje.tjba.jus.br/pje/login.seam'
     driver.get(login_url)
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ssoFrame')))
@@ -29,36 +53,28 @@ def login(driver, wait, user, password):
     login_button.click()
     driver.switch_to.default_content()
 
-def skip_token(driver, wait):
+@retry()
+def skip_token():
     proceed_button = wait.until(
         EC.element_to_be_clickable((By.XPATH, "//a[contains(text(),'Prosseguir sem o Token')]"))
     )
     proceed_button.click()
 
-def select_profile(driver, wait, profile):
+@retry()
+def select_profile(profile):
     dropdown = wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'dropdown-toggle')))
     dropdown.click()
-
     button_xpath = f"//a[contains(text(), '{profile}')]"
-    
     desired_button = wait.until(EC.element_to_be_clickable((By.XPATH, button_xpath)))
-
-    try:
-        wait.until(EC.invisibility_of_element_located((By.CLASS_NAME, 'overlay')))
-    except:
-        pass
-
     driver.execute_script("arguments[0].scrollIntoView(true);", desired_button)
     driver.execute_script("arguments[0].click();", desired_button)
 
-def search_process(driver, wait, classeJudicial:str='', nomeParte:str='',numOrgaoJustica:int='0216',numeroOAB:int='',estadoOAB:int=''):
+@retry()
+def search_process(classeJudicial:str='', nomeParte:str='',numOrgaoJustica:int='0216',numeroOAB:int='',estadoOAB:int=''):
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
-    icon_search_button = wait.until(
-        EC.element_to_be_clickable((By.CSS_SELECTOR, 'li#liConsultaProcessual i.fas'))
-    ) 
+    icon_search_button = wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, 'li#liConsultaProcessual i.fas')))
     icon_search_button.click()
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'frameConsultaProcessual')))
-    
     ElementoNumOrgaoJutica = wait.until(EC.presence_of_element_located((By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica')))
     ElementoNumOrgaoJutica.send_keys(numOrgaoJustica)
    
@@ -68,7 +84,7 @@ def search_process(driver, wait, classeJudicial:str='', nomeParte:str='',numOrga
         ElementoNumeroOAB.send_keys(numeroOAB)
         ElementoEstadosOAB = wait.until(EC.presence_of_element_located((By.ID, 'fPP:decorationDados:ufOABCombo')))
         listaEstadosOAB = Select(ElementoEstadosOAB)
-        listaEstadosOAB.select_by_value(estadoOAB) # 4 .:. BA
+        listaEstadosOAB.select_by_value(estadoOAB)
     
     consulta_classe = wait.until(EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial')))
     consulta_classe.send_keys(classeJudicial)
@@ -79,132 +95,102 @@ def search_process(driver, wait, classeJudicial:str='', nomeParte:str='',numOrga
     btnProcurarProcesso = wait.until(EC.presence_of_element_located((By.ID, 'fPP:searchProcessos')))
     btnProcurarProcesso.click()
 
-def collect_process_numbers(driver, wait):
-    WebDriverWait(driver, 50).until(
-        EC.presence_of_element_located((By.CSS_SELECTOR, "div.pull-right span.text-muted"))
-    )
-    
-    total_resultados = None
-    
-    while total_resultados is None:
-        try:
-            total_resultados_texto = driver.find_element(By.CSS_SELECTOR, "div.pull-right span.text-muted").text
-            total_resultados = int(total_resultados_texto.split()[0])
-        except (ValueError, IndexError):
-            continue
-    
-    itens_por_pagina = 20
-    total_paginas = math.ceil(total_resultados / itens_por_pagina)
-    
-    numProcessos = []
+@retry()
+def click_filtros_button():
+    wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+    target_element = wait.until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "div.filtros.vcenter.pa-5[data-toggle='collapse'][data-target='.group-filtro-tarefas-pendentes-tela']")))
+    driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
+    target_element = wait.until(EC.element_to_be_clickable(
+        (By.CSS_SELECTOR, "div.filtros.vcenter.pa-5[data-toggle='collapse'][data-target='.group-filtro-tarefas-pendentes-tela']")))
+    target_element.click()
+    print("Elemento 'Filtros' clicado com sucesso!")
+    driver.switch_to.default_content()
+@retry()
+def click_element_on_result():
+    target_element = wait.until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "span.nome-etiqueta.selecionada[title='Ver lista de processos vinculados a esta etiqueta']")))
+    #driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
+    target_element = wait.until(EC.element_to_be_clickable(
+        (By.CSS_SELECTOR, "span.nome-etiqueta.selecionada[title='Ver lista de processos vinculados a esta etiqueta']")))
+    target_element.click()
+    print("Elemento clicado com sucesso!")
 
-    for pagina in range(total_paginas):
-        WebDriverWait(driver, 50).until(
-            EC.visibility_of_all_elements_located((By.CSS_SELECTOR, "a.btn-link.btn-condensed"))
-        )
-
-        links_dos_processos = driver.find_elements(By.CSS_SELECTOR, "a.btn-link.btn-condensed")
-
-        for link in links_dos_processos:
-            numero_do_processo = link.get_attribute('title')
-            numProcessos.append(numero_do_processo)
-
-        if pagina == total_paginas - 1:
-            print("Fim da paginação")
-            break
-
-        try:
-            next_page_button = wait.until(
-                EC.element_to_be_clickable((By.XPATH, "//td[contains(@onclick, 'next')]"))
-            )
-            next_page_button.click()
-        except Exception as e:
-            print("Erro ao tentar clicar no botão de próxima página:", e)
-            break
-
-    numUnico = set(numProcessos)
-    numUnicosLista = list(numUnico)
-    return numUnicosLista
-
-def save_to_excel(process_numbers, filename="ResultadoProcessosPesquisa"):
-    dir_path = "./docs"
-    file_path = f"{dir_path}/{filename}.xlsx"
-    
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
-    
-    wb = Workbook()
-    ws = wb.active
-    ws.title = filename
-    bold_font = Font(bold=True, size=16)
-    ws["A1"] = "Processos"
-    ws["A1"].font = bold_font
-    
-    for row, processo in enumerate(process_numbers, start=2):
-        ws[f"A{row}"] = processo
-
-    wb.save(filename=file_path)
-    print(f"Arquivo '{file_path}' criado com sucesso.")
-
-def nav_tag(driver, wait):
+@retry()
+def nav_tag():
     tag_button = wait.until(
         EC.element_to_be_clickable((By.CSS_SELECTOR, 'li#liEtiquetas i.fas'))
     ) 
     tag_button.click()
 
-def search_on_tag(driver, wait, search):
-    wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
 
-    nav_tag(driver, wait)
-    input_tag(driver, wait, search)
-    click_element_on_result(driver, wait)
+@retry()
+def preencher_formulario(numProcesso=None, Comp=None, Etiqueta=None):
+    wait.until(EC.frame_to_be_available_and_switch_to_it((By.CLASS_NAME, 'ng-frame')))
+    """
+    Preenche o formulário com base nos parâmetros opcionais fornecidos e clica no botão Pesquisar.
+    
+    Parâmetros:
+    - numProcesso: O número do processo (opcional)
+    - Comp: A competência (opcional)
+    - Etiqueta: A etiqueta (opcional)
+    """
+    
+    # Preencher campo "Número do processo" se fornecido
+    if numProcesso:
+        num_processo_input = wait.until(EC.presence_of_element_located((By.ID, "itNrProcesso")))
+        driver.execute_script("arguments[0].scrollIntoView(true);", num_processo_input)  # Rolar até o elemento
+        num_processo_input.clear()
+        num_processo_input.send_keys(numProcesso)
+    
+    # Preencher campo "Competência" se fornecido
+    if Comp:
+        competencia_input = wait.until(EC.presence_of_element_located((By.ID, "itCompetencia")))
+        driver.execute_script("arguments[0].scrollIntoView(true);", competencia_input)  # Rolar até o elemento
+        competencia_input.clear()
+        competencia_input.send_keys(Comp)
+    
+    # Preencher campo "Etiqueta" se fornecido
+    if Etiqueta:
+        etiqueta_input = wait.until(EC.presence_of_element_located((By.ID, "itEtiqueta")))
+        driver.execute_script("arguments[0].scrollIntoView(true);", etiqueta_input)  # Rolar até o elemento
+        etiqueta_input.clear()
+        etiqueta_input.send_keys(Etiqueta)
+    
+    # Clicar no botão de "Pesquisar"
+    pesquisar_button = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[text()='Pesquisar']")))
+    driver.execute_script("arguments[0].scrollIntoView(true);", pesquisar_button)  # Rolar até o botão
+    pesquisar_button.click()
 
-def input_tag(driver, wait, search_text):
+    print("Formulário preenchido e pesquisa iniciada com sucesso!")
+    time.sleep(10)
+
+@retry()
+def input_tag(search_text):
     search_input = wait.until(EC.element_to_be_clickable((By.ID, "itPesquisarEtiquetas")))
     search_input.clear()
     search_input.send_keys(search_text)
     search_button = driver.find_element(By.CSS_SELECTOR, "button.btn.btn-default.btn-pesquisa[title='Pesquisar']")
     search_button.click()
 
-def click_element_on_result(driver, wait, max_retries=3):
-    #driver.switch_to.default_content()
+@retry()
+def search_on_tag(search):
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
-    retries = 0
-    while retries < max_retries:
-        try:
-            element_xpath = "//li[@class='nivel-1 col-sm-12 etiqueta']//span[@class='nome-etiqueta selecionada']"
-            target_element = wait.until(EC.presence_of_element_located((By.XPATH, element_xpath)))
-            print(target_element)
-            driver.execute_script("arguments[0].scrollIntoView(true);", target_element)
-            target_element = wait.until(EC.element_to_be_clickable((By.XPATH, element_xpath)))
-            target_element.click()
-            break
-        except TimeoutException:
-            retries += 1
-            print(f"Tentativa {retries} falhou. Tentando novamente...")
-            if retries >= max_retries:
-                raise TimeoutException(f"Não foi possível localizar ou clicar no elemento após {max_retries} tentativas")
-        except StaleElementReferenceException:
-            retries += 1
-            print(f"StaleElementReferenceException capturada. Tentando novamente... ({retries}/{max_retries})")
-        except Exception as e:
-            print(f"Erro: {e}")
-            break
-        finally:
-            driver.switch_to.default_content()
-    if retries == max_retries:
-        print(f"Falha ao clicar no elemento após {max_retries} tentativas")
-
+    nav_tag()
+    input_tag(search)
+    click_element_on_result()
 def main():
     load_dotenv()
-    driver, wait = initialize_driver()
+    initialize_driver()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
+    login(user, password)
     profile = os.getenv("PROFILE")
-    optionSearch= {'classeJudicial':"Curatela", 'nomeParte':''}
-    login(driver, wait, user, password)
-    select_profile(driver, wait, "V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
-    search_on_tag(driver, wait, "Cobrar Custas")
+    select_profile("V DOS FEITOS DE REL DE CONS CIV E COMERCIAIS DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
+    #click_filtros_button()
+    #preencher_formulario(Etiqueta="Cobrar Custas")
+    search_on_tag("Cobrar Custas")
     driver.quit()
+    #driver.switch_to.default_content()
 
 if __name__ == "__main__":
     main()
