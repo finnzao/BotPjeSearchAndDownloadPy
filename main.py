@@ -322,6 +322,29 @@ def click_element(xpath):
         print(f"Ocorreu uma exceção ao clicar no elemento. Captura de tela salva como 'click_element_exception.png'. Erro: {e}")
         raise e
 
+def downloadProcessOnTagSearch(typeDocument):
+    try:
+        original_window = driver.current_window_handle  # Salva o handle da janela original
+
+        click_element_on_result()
+        click_processo_numero()
+        click_element("//a[@title='Download autos do processo']")
+        select_tipo_documento(typeDocument)
+        click_element("/html/body/div/div[1]/div/form/span/ul[2]/li[5]/div/div[5]/input")
+        time.sleep(2) 
+        driver.close()
+        print("Janela atual fechada com sucesso.")
+        driver.switch_to.window(original_window)
+        print("Retornado para a janela original.")
+
+    except Exception as e:
+        driver.save_screenshot("downloadProcessOnTagSearch_exception.png")
+        print(f"Ocorreu uma exceção em 'downloadProcessOnTagSearch'. Captura de tela salva. Erro: {e}")
+        raise e  # Relevanta a exceção para permitir que o decorador @retry() funcione
+
+
+
+
 def main():
     load_dotenv()
     initialize_driver()
@@ -332,17 +355,7 @@ def main():
         select_profile(profile)
 
         search_on_tag("Cobrar Custas")
-        click_element_on_result()
-        click_processo_numero()
-
-        # Clicar no botão de download usando a função genérica
-        click_element("//a[@title='Download autos do processo']")
-
-        # Selecionar o tipo de documento 'Despacho'
-        select_tipo_documento("Despacho")
-
-        # Clicar no botão de download input usando a função genérica
-        click_element("/html/body/div/div[1]/div/form/span/ul[2]/li[5]/div/div[5]/input")
+        downloadProcessOnTagSearch("Petição Inicial")
 
         time.sleep(10)
     finally:
