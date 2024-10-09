@@ -3,7 +3,6 @@ from selenium.webdriver.support.expected_conditions import StaleElementReference
 from selenium.common.exceptions import (
     StaleElementReferenceException,
     ElementClickInterceptedException,
-    NoSuchElementException,
     TimeoutException,
 )
 from selenium.webdriver.common.by import By
@@ -203,8 +202,8 @@ def input_tag(search_text):
     search_input = wait.until(EC.element_to_be_clickable((By.ID, "itPesquisarEtiquetas")))
     search_input.clear()
     search_input.send_keys(search_text)
+    time.sleep(2)
     click_element("/html/body/app-root/selector/div/div/div[2]/right-panel/div/etiquetas/div[1]/div/div[1]/div[2]/div[1]/span/button[1]")
-    time.sleep(1)
     print(f"Pesquisa realizada com o texto: {search_text}")
     click_element("/html/body/app-root/selector/div/div/div[2]/right-panel/div/etiquetas/div[1]/div/div[2]/ul/p-datalist/div/div/ul/li/div/li/div[2]/span/span")
 
@@ -345,6 +344,70 @@ def downloadProcessOnTagSearch(typeDocument):
         print(f"Ocorreu uma exceção em 'downloadProcessOnTagSearch'. Captura de tela salva. Erro: {e}")
         raise e
 
+def getDataParties():
+
+
+def getDataParties():
+    try:
+        click_element('//*[@id="navbar"]/ul/li/a[1]')
+        print("Elemento da navbar clicado com sucesso após sair do frame.")
+        click_element('/html/body/div/div[1]/div/form/ul/li/ul/li/div[4]/table/tbody/tr/td/a')
+
+    except Exception as e:
+        print(f"Falha em coletar dados das partes: {e}")
+
+
+def InfoPartiesProcessOnTagSearch():
+    try:
+        original_window = driver.current_window_handle  # Salva o handle da janela original
+
+        # Certificar-se de que estamos dentro do frame 'ngFrame'
+        driver.switch_to.default_content()
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+        print("Dentro do frame 'ngFrame'.")
+
+        # Obter o número total de processos
+        total_processes = len(get_process_list())
+
+        for index in range(1, total_processes + 1):  # Ajuste do índice para começar em 1
+            print(f"\nIniciando o download para o processo {index} de {total_processes}")
+
+            # XPath relativo para localizar o processo
+            process_xpath = f"(//processo-datalist-card)[{index}]//a/div/span[2]"
+            print(f"XPath gerado: {process_xpath}")
+
+            # Localizar o elemento antes de passar para a função
+            process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
+
+            # Interagir com o elemento dentro do frame
+            click_on_process(process_element)
+
+            # Agora saímos do frame após a interação
+            driver.switch_to.default_content()
+            print("Saiu do frame 'ngFrame'.")
+
+            getDataParties()
+            time.sleep(5)  # Ajuste conforme necessário
+
+            # Fechar a janela atual
+            driver.close()
+            print("Janela atual fechada com sucesso.")
+
+            # Alternar de volta para a janela original
+            driver.switch_to.window(original_window)
+            print("Retornado para a janela original.")
+
+            # Entrar novamente no frame 'ngFrame' para a próxima iteração
+            wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+            print("Alternado para o frame 'ngFrame'.")
+
+        print("Processamento concluído.")
+
+    except Exception as e:
+        driver.save_screenshot("downloadProcessOnTagSearch_exception.png")
+        print(f"Ocorreu uma exceção em 'downloadProcessOnTagSearch'. Captura de tela salva. Erro: {e}")
+        raise e
+
 
 def main():
     load_dotenv()
@@ -356,8 +419,8 @@ def main():
         select_profile(profile)
 
         search_on_tag("Possivel OBT")
-        downloadProcessOnTagSearch("Petição Inicial")
-
+        #downloadProcessOnTagSearch("Petição Inicial")
+        InfoPartiesProcessOnTagSearch()
         time.sleep(10)
     finally:
         driver.quit()
