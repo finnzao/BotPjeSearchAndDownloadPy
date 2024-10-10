@@ -3,6 +3,7 @@ from selenium.common.exceptions import (
     StaleElementReferenceException,
     ElementClickInterceptedException,
     TimeoutException,
+    NoSuchElementException
 )
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
@@ -72,7 +73,7 @@ def initialize_driver():
 
     chrome_options.add_experimental_option("prefs", prefs)
     driver = webdriver.Chrome(options=chrome_options)
-    wait = WebDriverWait(driver, 60)  # Aumentado para 60 segundos
+    wait = WebDriverWait(driver, 120, poll_frequency=2, ignored_exceptions=[NoSuchElementException])
     logging.info("Driver inicializado com sucesso.")
 
 @retry()
@@ -112,7 +113,7 @@ def select_profile(profile):
 
 @retry()
 def search_on_tag(search):
-    wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+    switch_to_ngFrame()
     logging.info("Alternado para o frame 'ngFrame'.")
 
     original_handles = set(driver.window_handles)
@@ -195,7 +196,6 @@ def click_on_process(process_element):
         driver.save_screenshot("click_on_process_exception.png")
         logging.error(f"Ocorreu uma exceção ao clicar no processo. Captura de tela salva como 'click_on_process_exception.png'. Erro: {e}")
         raise e
-
 
 def switch_to_new_window(original_handles, timeout=20):
     """
@@ -282,13 +282,15 @@ def collectDataParties():
         if frames:
             driver.switch_to.frame(frames[0])  # Ajuste o índice conforme necessário
             logging.info("Alternado para o primeiro iframe.")
+        else:
+            logging.warning("Nenhum iframe encontrado. Continuando no contexto atual.")
 
         data = {}
 
-        # Lista de campos e seus XPaths
+        # Lista de campos e seus XPaths com IDs dinâmicos
         fields = {
-            'CPF': "//label[contains(text(), 'CPF')]/following::div[1]",
-            'Nome Civil': "//label[contains(text(), 'Nome civil')]/following::div[1]",
+            'CPF': '//*[@id="pessoaFisicaViewView:j_id58"]/div/div[2]',
+            'Nome Civil': '//*[@id="pessoaFisicaViewView:j_id80"]/div/div[2]',
             'Data de Nascimento': '//*[@id="pessoaFisicaViewView:j_id157"]/div/div[2]',
             'Genitor': '//*[@id="pessoaFisicaViewView:j_id168"]/div/div[2]',
             'Genitora': '//*[@id="pessoaFisicaViewView:j_id179"]/div/div[2]',
@@ -319,6 +321,7 @@ def collectDataParties():
 def getDataParties(original_handles, process_number, process_window_handle):
     try:
         # Já estamos na janela do processo
+
         # Clicar no elemento da navbar para navegar até a seção de dados das partes
         click_element('//*[@id="navbar"]/ul/li/a[1]')
         logging.info("Elemento da navbar clicado com sucesso após sair do frame.")
@@ -328,8 +331,13 @@ def getDataParties(original_handles, process_number, process_window_handle):
         logging.info("Navegado para a página de dados das partes com sucesso.")
 
         # Esperar até que uma nova janela seja aberta
-        WebDriverWait(driver, 10).until(EC.new_window_is_opened(original_handles))
-        logging.info("Nova janela detectada após clicar em 'dados das partes'.")
+        try:
+            WebDriverWait(driver, 10).until(EC.new_window_is_opened(original_handles))
+            logging.info("Nova janela detectada após clicar em 'dados das partes'.")
+        except TimeoutException:
+            logging.error("Timeout ao esperar pela nova janela de 'dados das partes'.")
+            driver.save_screenshot("getDataParties_new_window_timeout.png")
+            raise
 
         # Obter os novos handles das janelas
         new_handles = set(driver.window_handles) - original_handles
@@ -338,6 +346,10 @@ def getDataParties(original_handles, process_number, process_window_handle):
             time.sleep(1)
             driver.switch_to.window(data_window)
             logging.info(f"Alternado para a nova janela: {data_window}")
+
+            # Alternar para o frame correto dentro da nova janela, se necessário
+            # Exemplo: se houver um frame chamado 'dataFrame'
+            # driver.switch_to.frame('dataFrame')
 
             # Coletar os dados das partes
             data = collectDataParties()
@@ -364,7 +376,6 @@ def getDataParties(original_handles, process_number, process_window_handle):
         logging.error(f"Falha em coletar dados das partes. Erro: {e}")
         driver.save_screenshot("getDataParties_exception.png")
         raise e
-
 
 def save_data_to_excel(data_list, filename="dados_partes.xlsx"):
     """
@@ -421,63 +432,94 @@ def save_data_to_excel(data_list, filename="dados_partes.xlsx"):
         logging.error(f"Ocorreu uma exceção ao salvar os dados no Excel. Captura de tela salva como 'save_data_to_excel_exception.png'. Erro: {e}")
         raise e
 
-def InfoPartiesProcessOnTagSearch():
+def switch_to_ngFrame():
+    """
+    Alterna o contexto do Selenium para o frame 'ngFrame'.
+    """
     try:
-        original_window = driver.current_window_handle  # Save the handle of the original window
-
-        # Get the total number of processes
         driver.switch_to.default_content()
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
-        logging.info("Dentro do frame 'ngFrame'.")
-        total_processes = len(get_process_list())
+        logging.info("Alternado para o frame 'ngFrame'.")
+    except TimeoutException:
+        logging.error("Timeout ao tentar alternar para o frame 'ngFrame'.")
+        driver.save_screenshot("switch_to_ngFrame_timeout.png")
+        raise
 
-        for index in range(1, total_processes + 1):  # Adjust index to start at 1
-            logging.info(f"Entrando no processo {index} de {total_processes}")
+def InfoPartiesProcessOnTagSearch():
+    try:
+        original_window = driver.current_window_handle  # Salva o handle da janela original
 
-            # Ensure we're in the default content and switch to 'ngFrame'
-            driver.switch_to.default_content()
-            wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
-            logging.info("Reentrando no frame 'ngFrame'.")
+        # Obter o número total de processos
+        switch_to_ngFrame()
+        process_list = get_process_list()
+        total_processes = len(process_list)
+        logging.info(f"Total de processos a serem processados: {total_processes}")
 
-            # Generate XPath relative to locate the process
+        for index in range(1, total_processes + 1):  # Ajustar índice para começar em 1
+            logging.info(f"Iniciando o processamento do processo {index} de {total_processes}")
+
+            # Garantir que estamos no frame 'ngFrame' antes de cada iteração
+            switch_to_ngFrame()
+
+            # Gerar o XPath relativo para localizar o processo
             process_xpath = f"(//processo-datalist-card)[{index}]//a/div/span[2]"
             logging.info(f"XPath gerado: {process_xpath}")
 
-            # Locate the element before passing to the function
-            process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
+            try:
+                # Localizar o elemento do processo
+                process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
+            except TimeoutException:
+                logging.error(f"Timeout ao localizar o elemento do processo no índice {index} com XPath: {process_xpath}")
+                driver.save_screenshot(f"process_element_{index}_timeout.png")
+                continue  # Pular para o próximo processo
 
-            # Extract the process number
+            # Extrair o número do processo
             raw_process_number = process_element.text.strip()
             process_number = re.sub(r'\D', '', raw_process_number)
             if len(process_number) >= 17:
                 process_number = f"{process_number[:7]}-{process_number[7:9]}.{process_number[9:13]}.{process_number[13]}.{process_number[14:16]}.{process_number[16:]}"
             else:
-                process_number = raw_process_number
+                process_number = raw_process_number  # Fallback caso o formato esperado não seja encontrado
 
             logging.info(f"Número do Processo: {process_number}")
             print(process_number)
 
-            # Interact with the element inside the frame
-            process_window_handle = click_on_process(process_element)
+            # Clicar no elemento do processo e obter o handle da nova janela
+            try:
+                process_window_handle = click_on_process(process_element)
+            except Exception as e:
+                logging.error(f"Falha ao clicar no processo no índice {index}: {e}")
+                driver.save_screenshot(f"click_process_{index}_exception.png")
+                continue  # Pular para o próximo processo
 
-            # Navigate to the parties data page and collect data
-            original_handles = set(driver.window_handles)
-            getDataParties(original_handles=original_handles.copy(), process_number=process_number, process_window_handle=process_window_handle)
+            # Navegar para a página de dados das partes e coletar dados
+            try:
+                original_handles = set(driver.window_handles)
+                getDataParties(original_handles=original_handles.copy(), process_number=process_number, process_window_handle=process_window_handle)
+            except Exception as e:
+                logging.error(f"Falha ao coletar dados para o processo {process_number}: {e}")
+                driver.save_screenshot(f"getDataParties_{process_number}_exception.png")
 
-            # Close the process window
-            driver.close()
-            logging.info("Janela do processo fechada com sucesso.")
+            # Fechar a janela do processo
+            try:
+                driver.close()
+                logging.info("Janela do processo fechada com sucesso.")
+            except Exception as e:
+                logging.error(f"Falha ao fechar a janela do processo {process_number}: {e}")
 
-            # Return to the original window
-            driver.switch_to.window(original_window)
-            logging.info("Retornado para a janela original.")
+            # Retornar para a janela original
+            try:
+                driver.switch_to.window(original_window)
+                logging.info("Retornado para a janela original.")
+            except Exception as e:
+                logging.error(f"Falha ao retornar para a janela original: {e}")
 
-            # Wait before processing the next process
-            time.sleep(1)  # Adjust as needed
+            # Esperar antes de processar o próximo processo
+            time.sleep(1)  # Ajuste conforme necessário
 
         logging.info("Processamento concluído.")
 
-        # Save the collected data to an Excel file after processing
+        # Salvar os dados coletados em um arquivo Excel após o processamento
         if process_data_list:
             save_data_to_excel(process_data_list)
 
@@ -485,7 +527,6 @@ def InfoPartiesProcessOnTagSearch():
         driver.save_screenshot("InfoPartiesProcessOnTagSearch_exception.png")
         logging.error(f"Ocorreu uma exceção em 'InfoPartiesProcessOnTagSearch'. Captura de tela salva como 'InfoPartiesProcessOnTagSearch_exception.png'. Erro: {e}")
         raise e
-
 
 def main():
     load_dotenv()
