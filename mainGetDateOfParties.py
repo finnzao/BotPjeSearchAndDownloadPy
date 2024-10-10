@@ -423,56 +423,61 @@ def save_data_to_excel(data_list, filename="dados_partes.xlsx"):
 
 def InfoPartiesProcessOnTagSearch():
     try:
-        original_window = driver.current_window_handle  # Salva o handle da janela original
+        original_window = driver.current_window_handle  # Save the handle of the original window
 
-        # Certificar-se de que estamos dentro do frame 'ngFrame'
+        # Get the total number of processes
         driver.switch_to.default_content()
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
         logging.info("Dentro do frame 'ngFrame'.")
-
-        # Obter o número total de processos
         total_processes = len(get_process_list())
 
-        for index in range(1, total_processes + 1):  # Ajuste do índice para começar em 1
+        for index in range(1, total_processes + 1):  # Adjust index to start at 1
             logging.info(f"Entrando no processo {index} de {total_processes}")
 
-            # XPath relativo para localizar o processo
+            # Ensure we're in the default content and switch to 'ngFrame'
+            driver.switch_to.default_content()
+            wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+            logging.info("Reentrando no frame 'ngFrame'.")
+
+            # Generate XPath relative to locate the process
             process_xpath = f"(//processo-datalist-card)[{index}]//a/div/span[2]"
             logging.info(f"XPath gerado: {process_xpath}")
 
-            # Localizar o elemento antes de passar para a função
+            # Locate the element before passing to the function
             process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
+
+            # Extract the process number
             raw_process_number = process_element.text.strip()
             process_number = re.sub(r'\D', '', raw_process_number)
-            if len(process_number) >= 17:  # Verificação para evitar indexação fora do intervalo
+            if len(process_number) >= 17:
                 process_number = f"{process_number[:7]}-{process_number[7:9]}.{process_number[9:13]}.{process_number[13]}.{process_number[14:16]}.{process_number[16:]}"
             else:
-                process_number = raw_process_number  # Fallback caso o formato esperado não seja encontrado
+                process_number = raw_process_number
 
             logging.info(f"Número do Processo: {process_number}")
             print(process_number)
 
-            # Interagir com o elemento dentro do frame
+            # Interact with the element inside the frame
             process_window_handle = click_on_process(process_element)
 
-            # Navegar para a página de dados das partes e coletar dados
+            # Navigate to the parties data page and collect data
             original_handles = set(driver.window_handles)
             getDataParties(original_handles=original_handles.copy(), process_number=process_number, process_window_handle=process_window_handle)
 
-            # Fechar a janela do processo
+            # Close the process window
             driver.close()
             logging.info("Janela do processo fechada com sucesso.")
 
-            # Retornar para a janela original
+            # Return to the original window
             driver.switch_to.window(original_window)
             logging.info("Retornado para a janela original.")
 
-            # Esperar pelo processamento
-            time.sleep(1)  # Ajuste conforme necessário
+            # Wait before processing the next process
+            time.sleep(1)  # Adjust as needed
 
         logging.info("Processamento concluído.")
 
-        # Salvar os dados coletados em um arquivo Excel após o processamento
+        # Save the collected data to an Excel file after processing
         if process_data_list:
             save_data_to_excel(process_data_list)
 
