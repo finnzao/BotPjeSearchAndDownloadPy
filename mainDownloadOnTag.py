@@ -1,4 +1,4 @@
-import re
+import re 
 from selenium import webdriver
 from selenium.webdriver.support.expected_conditions import StaleElementReferenceException
 from selenium.common.exceptions import (
@@ -80,13 +80,13 @@ def initialize_driver():
     # Configurações do Chrome
     chrome_options = webdriver.ChromeOptions()
 
-
-
-    # Diretório para onde os downloads serão salvos
-    download_directory = os.path.abspath("C:/Users/lfmdsantos/Downloads/processosBaixados")  # Altere para o caminho desejado
+    # Diretório para onde os downloads serão salvos de forma genérica
+    user_home = os.path.expanduser("~")
+    download_directory = os.path.join(user_home, "Downloads", "processosBaixados")
 
     # Criar o diretório se não existir
     os.makedirs(download_directory, exist_ok=True)
+    print(f"Diretório de download configurado para: {download_directory}")
 
     # Configurações de preferências
     prefs = {
@@ -100,7 +100,6 @@ def initialize_driver():
     chrome_options.add_experimental_option("prefs", prefs)
     driver = webdriver.Chrome(options=chrome_options)
     wait = WebDriverWait(driver, 50)
-
 
 @retry()
 def login(user, password):
@@ -296,33 +295,34 @@ def downloadProcessOnTagSearch(typeDocument):
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
         print("Dentro do frame 'ngFrame'.")
 
+        process_numbers = []  # Lista para armazenar os números de processo
+
         # Obter o número total de processos
         total_processes = len(get_process_list())
 
-        for index in range(1, total_processes + 1):  # Ajuste do índice para começar em 1
+        for index in range(1, total_processes + 1):
             print(f"\nIniciando o download para o processo {index} de {total_processes}")
 
             # XPath relativo para localizar o processo
             process_xpath = f"(//processo-datalist-card)[{index}]//a/div/span[2]"
             print(f"XPath gerado: {process_xpath}")
+
+            # Localizar o elemento antes de passar para a função
+            process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
             raw_process_number = process_element.text.strip()
             process_number = re.sub(r'\D', '', raw_process_number)
             if len(process_number) >= 17:
                 process_number = f"{process_number[:7]}-{process_number[7:9]}.{process_number[9:13]}.{process_number[13]}.{process_number[14:16]}.{process_number[16:]}"
             else:
-                process_number = raw_process_number  # Fallback caso o formato esperado não seja encontrado
-            print(process_number)
-            # Localizar o elemento antes de passar para a função
-            process_element = wait.until(EC.element_to_be_clickable((By.XPATH, process_xpath)))
+                process_number = raw_process_number
+            print(f"Número do processo: {process_number}")
+            process_numbers.append(process_number)
 
-            # Interagir com o elemento dentro do frame
             click_on_process(process_element)
 
-            # Agora saímos do frame após a interação
             driver.switch_to.default_content()
             print("Saiu do frame 'ngFrame'.")
-
-            # Realizar as ações de download na nova janela
+            
             click_element("//a[@title='Download autos do processo']")
             select_tipo_documento(typeDocument)
             click_element("//input[@value='Download']")
@@ -343,12 +343,61 @@ def downloadProcessOnTagSearch(typeDocument):
             print("Alternado para o frame 'ngFrame'.")
 
         print("Processamento concluído.")
+        return process_numbers  # Retorna a lista de números de processo
 
     except Exception as e:
         driver.save_screenshot("downloadProcessOnTagSearch_exception.png")
         print(f"Ocorreu uma exceção em 'downloadProcessOnTagSearch'. Captura de tela salva. Erro: {e}")
         raise e
 
+def download_requested_processes(process_numbers):
+    """
+    Navega até a página de requisições de download e baixa os processos cujo número está em 'process_numbers'.
+    """
+    try:
+        # Navega até a página de download
+        driver.get('https://pje.tjba.jus.br/pje/AreaDeDownload/listView.seam')
+
+        # Espera o iframe 'ngFrame' estar disponível e alterna para ele
+        wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
+        print("Dentro do iframe 'ngFrame'.")
+
+        # Espera a tabela carregar dentro do iframe
+        wait.until(EC.presence_of_element_located((By.TAG_NAME, 'table')))
+        print("Tabela carregada.")
+
+        # Obtém todas as linhas da tabela (exceto o cabeçalho)
+        rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
+        print(f"Número total de processos na lista de downloads: {len(rows)}")
+
+        for row in rows:
+            # Obtém o número do processo na primeira coluna
+            process_number_td = row.find_element(By.XPATH, "./td[1]")
+            process_number = process_number_td.text.strip()
+            print(f"Verificando o processo: {process_number}")
+            print(f"Números de processos a serem baixados: {process_numbers}")
+
+            # Verifica se o número do processo está na lista
+            if process_number in process_numbers:
+                print(f"Processo {process_number} encontrado na lista. Iniciando download...")
+                # Clica no botão de download nesta linha
+                # Considerando que o botão está na última coluna
+                download_button = row.find_element(By.XPATH, "./td[last()]//button")
+                driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
+                download_button.click()
+                # Espera pelo download ser iniciado
+                time.sleep(5)
+            else:
+                print(f"Processo {process_number} não está na lista. Pulando...")
+
+        # Volta para o conteúdo principal
+        driver.switch_to.default_content()
+        print("Voltado para o conteúdo principal.")
+
+    except Exception as e:
+        driver.save_screenshot("download_requested_processes_exception.png")
+        print(f"Ocorreu uma exceção em 'download_requested_processes'. Captura de tela salva. Erro: {e}")
+        raise e
 
 def main():
     load_dotenv()
@@ -358,8 +407,9 @@ def main():
         login(user, password)
         profile = os.getenv("PROFILE")
         select_profile(profile)
-        search_on_tag("extintiva")
-        downloadProcessOnTagSearch("Selecione")
+        search_on_tag("etiqueta teste")
+        process_numbers = downloadProcessOnTagSearch("Selecione")  # Captura os números de processo
+        download_requested_processes(process_numbers)  # Chama a nova função com a lista de números
         time.sleep(10)
     finally:
         driver.quit()
