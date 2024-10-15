@@ -322,10 +322,10 @@ def downloadProcessOnTagSearch(typeDocument):
 
             driver.switch_to.default_content()
             print("Saiu do frame 'ngFrame'.")
-            
-            click_element("//a[@title='Download autos do processo']")
+
+            click_element("//*[@id='navbar:ajaxPanelAlerts']/ul[2]/li[5]/a")
             select_tipo_documento(typeDocument)
-            click_element("//input[@value='Download']")
+            click_element("/html/body/div/div[1]/div/form/span/ul[2]/li[5]/div/div[5]/input")
 
             # Esperar pelo download ser concluído, se necessário
             time.sleep(5)  # Ajuste conforme necessário
@@ -352,7 +352,8 @@ def downloadProcessOnTagSearch(typeDocument):
 
 def download_requested_processes(process_numbers):
     """
-    Navega até a página de requisições de download e baixa os processos cujo número está em 'process_numbers'.
+    Navega até a página de requisições de download e baixa os processos cujo número está em 'process_numbers',
+    evitando baixar processos com numeração repetida.
     """
     try:
         # Navega até a página de download
@@ -370,6 +371,9 @@ def download_requested_processes(process_numbers):
         rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
         print(f"Número total de processos na lista de downloads: {len(rows)}")
 
+        # Conjunto para rastrear os números de processos já baixados
+        downloaded_process_numbers = set()
+
         for row in rows:
             # Obtém o número do processo na primeira coluna
             process_number_td = row.find_element(By.XPATH, "./td[1]")
@@ -377,22 +381,24 @@ def download_requested_processes(process_numbers):
             print(f"Verificando o processo: {process_number}")
             print(f"Números de processos a serem baixados: {process_numbers}")
 
-            # Verifica se o número do processo está na lista
-            if process_number in process_numbers:
-                print(f"Processo {process_number} encontrado na lista. Iniciando download...")
+            # Verifica se o número do processo está na lista e não foi baixado ainda
+            if process_number in process_numbers and process_number not in downloaded_process_numbers:
+                print(f"Processo {process_number} encontrado na lista e ainda não baixado. Iniciando download...")
                 # Clica no botão de download nesta linha
                 # Considerando que o botão está na última coluna
                 download_button = row.find_element(By.XPATH, "./td[last()]//button")
                 driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
                 download_button.click()
+                # Adiciona o número do processo ao conjunto de processados
+                downloaded_process_numbers.add(process_number)
                 # Espera pelo download ser iniciado
                 time.sleep(5)
             else:
-                print(f"Processo {process_number} não está na lista. Pulando...")
+                print(f"Processo {process_number} não está na lista ou já foi baixado. Pulando...")
 
         # Volta para o conteúdo principal
         driver.switch_to.default_content()
-        print("Voltado para o conteúdo principal.")
+        print("Voltando para o conteúdo principal.")
 
     except Exception as e:
         driver.save_screenshot("download_requested_processes_exception.png")
