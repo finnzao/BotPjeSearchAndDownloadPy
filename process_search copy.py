@@ -99,57 +99,51 @@ def get_total_pages():
 def collect_process_numbers():
     WebDriverWait(driver, 50).until(EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb')))
     numProcessos = []
-    max_itens_por_pagina = 20  # Adjust this value if necessary
+    max_itens_por_pagina = 20  # Ajuste este valor se o número máximo por página for diferente
 
     while True:
-        print("Processing a new page")
-        # Wait until the table body is present
-        table_body = WebDriverWait(driver, 50).until(
-            EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb'))
+        print("Processando nova página")
+        # Aguarde até que os links dos processos estejam visíveis
+        WebDriverWait(driver, 50).until(
+            EC.visibility_of_all_elements_located((By.CSS_SELECTOR, "a.btn-link.btn-condensed"))
         )
 
-        # Find all rows in the table body
-        rows = table_body.find_elements(By.XPATH, "./tr")
-        print(f"Number of processes found on the page: {len(rows)}")
+        # Encontre todos os links dos processos na página atual
+        links_dos_processos = driver.find_elements(By.CSS_SELECTOR, "a.btn-link.btn-condensed")
 
-        # For each row, extract the process number
-        for row in rows:
-            try:
-                # Find the first 'td' element in the row
-                first_td = row.find_element(By.XPATH, "./td[1]")
-                # Find the 'a' tag within the first 'td'
-                a_tag = first_td.find_element(By.TAG_NAME, "a")
-                numero_do_processo = a_tag.get_attribute('title')
-                numProcessos.append(numero_do_processo)
-            except Exception as e:
-                print(f"Could not find process number in row: {e}")
-                continue
+        #print(f"Número de processos encontrados na página: {len(links_dos_processos)}")
+        print(len(links_dos_processos))
+        # Extraia o número do processo de cada link e adicione à lista
+        for link in links_dos_processos:
+            numero_do_processo = link.get_attribute('title')
+            numProcessos.append(numero_do_processo)
 
-        # If the number of processes on the page is less than the maximum items per page, we're on the last page
-        if len(rows) < max_itens_por_pagina:
-            print("Last page reached.")
-            time.sleep(2)  # Wait 2 seconds to ensure all items are captured
+        # Se o número de processos na página for menor que o número máximo por página, estamos na última página
+        if len(links_dos_processos) < max_itens_por_pagina:
+            print("Última página alcançada.")
+            time.sleep(2)  # Esperar 2 segundos para garantir que todos os itens sejam capturados
             break
 
-        # Try to click on the 'Next' button
+        # Tentar clicar no botão 'Próxima'
         try:
-            # Wait until any loading element disappears
+            # Aguardar até que qualquer elemento de carregamento desapareça
             wait.until(
                 EC.invisibility_of_element((By.ID, 'j_id136:modalStatusCDiv'))
             )
 
-            # Find and click the 'Next' button
+            # Tente localizar e clicar no botão 'Próxima página'
             next_page_button = wait.until(
                 EC.element_to_be_clickable((By.XPATH, "//td[contains(@onclick, 'next')]"))
             )
             next_page_button.click()
         except Exception as e:
-            print(f"Error navigating to the next page: {e}")
+            print(f"Erro ao navegar para a próxima página: {e}")
             break
 
     numUnico = set(numProcessos)
     numUnicosLista = list(numUnico)
     return numUnicosLista
+
 
 def save_to_json(data, filename="ResultadoProcessosPesquisa.json"):
     # Definir o caminho do arquivo
@@ -170,7 +164,7 @@ def main():
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
     profile = os.getenv("PROFILE")
     optionSearch = {
-        'nomeParte': 'BANCO DO BRASIL S/A',
+        'nomeParte': 'EDMILSON DO NASCIMENTO SANTOS',
         'numOrgaoJustica': '0216',
         'Assunto': '',
         'NomeDoRepresentante': '',
