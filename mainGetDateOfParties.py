@@ -70,7 +70,10 @@ def initialize_driver():
         "download.directory_upgrade": True,
         "safebrowsing.enabled": True  # Habilitar navegação segura
     }
-
+    
+    chrome_options.add_argument("--disable-extensions")  # Desativa extensões
+    chrome_options.add_argument("--no-sandbox")  # Ignora restrições de segurança
+    chrome_options.add_argument("--disable-dev-shm-usage") 
     chrome_options.add_experimental_option("prefs", prefs)
     driver = webdriver.Chrome(options=chrome_options)
     wait = WebDriverWait(driver, 120, poll_frequency=2, ignored_exceptions=[NoSuchElementException])
@@ -245,27 +248,6 @@ def click_element(xpath):
         logging.error(f"Ocorreu uma exceção ao clicar no elemento. Captura de tela salva como 'click_element_exception.png'. Erro: {e}")
         raise e
 
-@retry()
-def select_tipo_documento(tipoDocumento):
-    """
-    Seleciona o tipo de documento no dropdown com base no 'tipoDocumento' fornecido.
-
-    :param tipoDocumento: O tipo de documento a ser selecionado (e.g., 'Despacho').
-    """
-    try:
-        select_element = wait.until(EC.presence_of_element_located(
-            (By.ID, 'navbar:cbTipoDocumento')
-        ))
-        select = Select(select_element)
-        select.select_by_visible_text(tipoDocumento)
-        logging.info(f"Tipo de documento '{tipoDocumento}' selecionado com sucesso.")
-    except Exception as e:
-        driver.save_screenshot("select_tipo_documento_exception.png")
-        logging.error(f"Ocorreu uma exceção ao selecionar o tipo de documento. Captura de tela salva como 'select_tipo_documento_exception.png'. Erro: {e}")
-        raise e
-
-from selenium.common.exceptions import NoSuchElementException
-
 def collectDataParties():
     """
     Coleta informações específicas das partes de um processo e as armazena em um dicionário.
@@ -276,18 +258,10 @@ def collectDataParties():
     """
     try:
         logging.info("Iniciando coleta de dados das partes.")
-        # Alternar para o iframe correto, se necessário
-        frames = driver.find_elements(By.TAG_NAME, 'iframe')
-        logging.info(f"Número de iframes encontrados: {len(frames)}")
-        if frames:
-            driver.switch_to.frame(frames[0])  # Ajuste o índice conforme necessário
-            logging.info("Alternado para o primeiro iframe.")
-        else:
-            logging.warning("Nenhum iframe encontrado. Continuando no contexto atual.")
 
         data = {}
 
-        # Lista de campos e seus XPaths com IDs dinâmicos
+        # Lista de campos e seus XPaths
         fields = {
             'CPF': '//*[@id="pessoaFisicaViewView:j_id58"]/div/div[2]',
             'Nome Civil': '//*[@id="pessoaFisicaViewView:j_id80"]/div/div[2]',
@@ -305,77 +279,87 @@ def collectDataParties():
                 logging.warning(f"{field_name} não encontrado.")
                 data[field_name] = ''  # Atribuir valor padrão
 
-        # Garantir que voltamos ao conteúdo padrão
-        driver.switch_to.default_content()
-
         logging.info(f"Dados coletados: {data}")
         return data
 
     except Exception as e:
         logging.error(f"Ocorreu uma exceção ao coletar dados das partes: {e}")
         driver.save_screenshot("collectDataParties_exception.png")
-        with open("collectDataParties_exception.html", "w", encoding='utf-8') as f:
-            f.write(driver.page_source)
         raise e
 
-def getDataParties(original_handles, process_number, process_window_handle):
+def getDataParties(original_window, process_number):
     try:
-        # Já estamos na janela do processo
+        # Supondo que estamos na aba do processo
+        process_window_handle = driver.current_window_handle
 
-        # Clicar no elemento da navbar para navegar até a seção de dados das partes
+        # Clicar no elemento da navbar para navegar até a seção de partes
         click_element('//*[@id="navbar"]/ul/li/a[1]')
         logging.info("Elemento da navbar clicado com sucesso após sair do frame.")
 
-        # Clicar no botão específico para acessar os dados das partes
-        click_element('/html/body/div/div[1]/div/form/ul/li/ul/li/div[4]/table/tbody/tr/td/a')
-        logging.info("Navegado para a página de dados das partes com sucesso.")
+        # Esperar até que o polo passivo esteja presente na página
+        wait.until(EC.presence_of_element_located((By.ID, 'poloPassivo')))
 
-        # Esperar até que uma nova janela seja aberta
-        try:
-            WebDriverWait(driver, 10).until(EC.new_window_is_opened(original_handles))
-            logging.info("Nova janela detectada após clicar em 'dados das partes'.")
-        except TimeoutException:
-            logging.error("Timeout ao esperar pela nova janela de 'dados das partes'.")
-            driver.save_screenshot("getDataParties_new_window_timeout.png")
-            raise
+        # Encontrar o div com o ID do polo passivo
+        polo_div = driver.find_element(By.ID, 'poloPassivo')
 
-        # Obter os novos handles das janelas
-        new_handles = set(driver.window_handles) - original_handles
-        if new_handles:
-            data_window = new_handles.pop()
-            time.sleep(1)
-            driver.switch_to.window(data_window)
-            logging.info(f"Alternado para a nova janela: {data_window}")
+        # Encontrar todos os links das partes dentro do polo passivo
+        party_links = polo_div.find_elements(By.CSS_SELECTOR, 'tbody tr td a')
 
-            # Alternar para o frame correto dentro da nova janela, se necessário
-            # Exemplo: se houver um frame chamado 'dataFrame'
-            # driver.switch_to.frame('dataFrame')
+        logging.info(f"Encontrado {len(party_links)} partes no polo passivo")
 
-            # Coletar os dados das partes
-            data = collectDataParties()
-            data['Process Number'] = process_number  # Adicionar o número do processo aos dados
-            process_data_list.append(data)
-            logging.info("Dados das partes coletados e adicionados à lista.")
+        for index in range(len(party_links)):
+            # Atualizar a referência dos elementos para evitar StaleElementReferenceException
+            polo_div = driver.find_element(By.ID, 'poloPassivo')
+            party_links = polo_div.find_elements(By.CSS_SELECTOR, 'tbody tr td a')
+            party_link = party_links[index]
 
-            # Fechar a janela de dados
-            driver.close()
-            logging.info("Janela de dados das partes fechada com sucesso.")
+            # Salvar os handles antes de clicar
+            handles_before_click = set(driver.window_handles)
 
-            # Retornar para a janela do processo
-            driver.switch_to.window(process_window_handle)
-            logging.info("Retornado para a janela do processo.")
+            # Clicar no link da parte
+            driver.execute_script("arguments[0].click();", party_link)
+            logging.info("Link da parte clicado")
 
-        else:
-            logging.warning("Nenhuma nova janela foi aberta após clicar em 'dados das partes'.")
+            # Esperar por uma nova aba
+            WebDriverWait(driver, 10).until(EC.new_window_is_opened(handles_before_click))
 
-    except TimeoutException as te:
-        logging.error(f"TimeoutException: Elementos demoraram para carregar. Erro: {te}")
-        driver.save_screenshot("getDataParties_timeout.png")
-        raise te
+            handles_after_click = set(driver.window_handles)
+            new_handles = handles_after_click - handles_before_click
+
+            if new_handles:
+                data_window = new_handles.pop()
+                driver.switch_to.window(data_window)
+                logging.info("Aba de dados da parte aberta")
+
+                # Coletar dados
+                data = collectDataParties()
+                data['Process Number'] = process_number
+                data['Polo'] = 'Passivo'
+                data['Party Name'] = party_link.text.strip()
+                process_data_list.append(data)
+
+                # Fechar a aba de dados da parte
+                driver.close()
+                logging.info("Aba de dados da parte fechada")
+
+                # Após fechar a aba, alternar para a aba restante (aba do processo)
+                remaining_handles = driver.window_handles
+                if remaining_handles:
+                    driver.switch_to.window(remaining_handles[0])
+                    logging.info("Retornando para a aba do processo")
+                else:
+                    logging.error("Nenhuma janela restante após fechar a aba de dados da parte")
+                    return
+
+                time.sleep(2)
+            else:
+                logging.warning("Nenhuma nova aba foi aberta após clicar no link da parte.")
+
     except Exception as e:
         logging.error(f"Falha em coletar dados das partes. Erro: {e}")
         driver.save_screenshot("getDataParties_exception.png")
         raise e
+
 
 def save_data_to_excel(data_list, filename="dados_partes.xlsx"):
     """
@@ -389,8 +373,8 @@ def save_data_to_excel(data_list, filename="dados_partes.xlsx"):
         ws = wb.active
         ws.title = "Dados das Partes"
 
-        # Cabeçalhos (incluindo 'Process Number')
-        headers = ['Process Number', 'CPF', 'Nome Civil', 'Data de Nascimento', 'Genitor', 'Genitora']
+        # Cabeçalhos atualizados
+        headers = ['Process Number', 'Polo', 'Party Name', 'CPF', 'Nome Civil', 'Data de Nascimento', 'Genitor', 'Genitora']
         ws.append(headers)
 
         # Estilização dos cabeçalhos
@@ -403,6 +387,8 @@ def save_data_to_excel(data_list, filename="dados_partes.xlsx"):
         for data in data_list:
             ws.append([
                 data.get('Process Number', ''),
+                data.get('Polo', ''),
+                data.get('Party Name', ''),
                 data.get('CPF', ''),
                 data.get('Nome Civil', ''),
                 data.get('Data de Nascimento', ''),
@@ -447,7 +433,7 @@ def switch_to_ngFrame():
 
 def InfoPartiesProcessOnTagSearch():
     try:
-        original_window = driver.current_window_handle  # Salva o handle da janela original
+        original_window = driver.current_window_handle  # Salva o handle da janela original (lista de processos)
 
         # Obter o número total de processos
         switch_to_ngFrame()
@@ -494,20 +480,19 @@ def InfoPartiesProcessOnTagSearch():
 
             # Navegar para a página de dados das partes e coletar dados
             try:
-                original_handles = set(driver.window_handles)
-                getDataParties(original_handles=original_handles.copy(), process_number=process_number, process_window_handle=process_window_handle)
+                getDataParties(original_window=original_window, process_number=process_number)
             except Exception as e:
                 logging.error(f"Falha ao coletar dados para o processo {process_number}: {e}")
                 driver.save_screenshot(f"getDataParties_{process_number}_exception.png")
 
-            # Fechar a janela do processo
+            # Fechar a aba do processo
             try:
                 driver.close()
-                logging.info("Janela do processo fechada com sucesso.")
+                logging.info("Aba do processo fechada com sucesso.")
             except Exception as e:
-                logging.error(f"Falha ao fechar a janela do processo {process_number}: {e}")
+                logging.error(f"Falha ao fechar a aba do processo {process_number}: {e}")
 
-            # Retornar para a janela original
+            # Retornar para a janela original (lista de processos)
             try:
                 driver.switch_to.window(original_window)
                 logging.info("Retornado para a janela original.")
@@ -528,6 +513,7 @@ def InfoPartiesProcessOnTagSearch():
         logging.error(f"Ocorreu uma exceção em 'InfoPartiesProcessOnTagSearch'. Captura de tela salva como 'InfoPartiesProcessOnTagSearch_exception.png'. Erro: {e}")
         raise e
 
+
 def main():
     load_dotenv()
     initialize_driver()
@@ -535,9 +521,9 @@ def main():
         user, password = os.getenv("USER"), os.getenv("PASSWORD")
         login(user, password)
         profile = os.getenv("PROFILE")
-        select_profile(profile)
+        select_profile("VARA CRIMINAL DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
 
-        search_on_tag("Possivel OBT")
+        search_on_tag("process")
         InfoPartiesProcessOnTagSearch()
         time.sleep(5)
     finally:

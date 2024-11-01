@@ -96,13 +96,19 @@ def get_total_pages():
         print(f"Erro ao obter o número total de páginas: {e}")
         return 0
 
+
+
+
 def collect_process_numbers():
     WebDriverWait(driver, 50).until(EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb')))
     numProcessos = []
     max_itens_por_pagina = 20  # Adjust this value if necessary
 
-    while True:
-        print("Processing a new page")
+    total_pages = get_total_pages()
+    print(f"Total pages to process: {total_pages}")
+
+    for page_num in range(1, total_pages + 1):
+        print(f"Processing page {page_num} of {total_pages}")
         # Wait until the table body is present
         table_body = WebDriverWait(driver, 50).until(
             EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb'))
@@ -115,7 +121,6 @@ def collect_process_numbers():
         # For each row, extract the process number
         for row in rows:
             try:
-                # Find the first 'td' element in the row
                 first_td = row.find_element(By.XPATH, "./td[1]")
                 # Find the 'a' tag within the first 'td'
                 a_tag = first_td.find_element(By.TAG_NAME, "a")
@@ -125,31 +130,34 @@ def collect_process_numbers():
                 print(f"Could not find process number in row: {e}")
                 continue
 
-        # If the number of processes on the page is less than the maximum items per page, we're on the last page
-        if len(rows) < max_itens_por_pagina:
+        if page_num < total_pages:
+            # Try to click on the 'Next' button
+            try:
+                # Wait until any loading element disappears
+                wait.until(
+                    EC.invisibility_of_element((By.ID, 'j_id136:modalStatusCDiv'))
+                )
+
+                # Find and click the 'Next' button
+                next_page_button = wait.until(
+                    EC.element_to_be_clickable((By.XPATH, "//td[contains(@onclick, 'next')]"))
+                )
+                next_page_button.click()
+                # Wait for the page to load
+                wait.until(EC.staleness_of(table_body))
+            except Exception as e:
+                print(f"Error navigating to the next page: {e}")
+                break  # Exit the loop if unable to navigate
+        else:
+            first_td = row.find_element(By.XPATH, "./td[1]")
+            # Find the 'a' tag within the first 'td'
+            a_tag = first_td.find_element(By.TAG_NAME, "a")
+            numero_do_processo = a_tag.get_attribute('title')
+            numProcessos.append(numero_do_processo)
             print("Last page reached.")
-            time.sleep(2)  # Wait 2 seconds to ensure all items are captured
-            break
+            time.sleep(2)
 
-        # Try to click on the 'Next' button
-        try:
-            # Wait until any loading element disappears
-            wait.until(
-                EC.invisibility_of_element((By.ID, 'j_id136:modalStatusCDiv'))
-            )
 
-            # Find and click the 'Next' button
-            next_page_button = wait.until(
-                EC.element_to_be_clickable((By.XPATH, "//td[contains(@onclick, 'next')]"))
-            )
-            next_page_button.click()
-        except Exception as e:
-            print(f"Error navigating to the next page: {e}")
-            break
-
-    numUnico = set(numProcessos)
-    numUnicosLista = list(numUnico)
-    return numUnicosLista
 
 def save_to_json(data, filename="ResultadoProcessosPesquisa.json"):
     # Definir o caminho do arquivo
@@ -170,7 +178,7 @@ def main():
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
     profile = os.getenv("PROFILE")
     optionSearch = {
-        'nomeParte': 'BANCO DO BRASIL S/A',
+        'nomeParte': 'ORLANDO BRITO DE ALMEIDA',
         'numOrgaoJustica': '0216',
         'Assunto': '',
         'NomeDoRepresentante': '',
@@ -188,10 +196,11 @@ def main():
     time.sleep(20)
     process_numbers = collect_process_numbers()
     driver.quit()
-
+    print(process_numbers)
     # Salvar os números dos processos em formato JSON
     if process_numbers:
         save_to_json(process_numbers)
+        
     else:
         print("Nenhum processo encontrado para salvar.")
 
