@@ -286,138 +286,112 @@ class PJEAutomation:
             self.driver.save_screenshot("collectDataParties_exception.png")
             raise e
 
-    def save_data_to_excel(self, data_list, filename="dados_partes.xlsx"):
+    def collect_process_info(self):
         """
-        Salva a lista de dicionários em um arquivo Excel.
-
-        :param data_list: Lista de dicionários contendo os dados a serem salvos.
-        :param filename: Nome do arquivo Excel de saída.
+        Coleta informações adicionais do processo, como classe, assunto, etc.
         """
         try:
-            wb = Workbook()
-            ws = wb.active
-            ws.title = "Dados das Partes"
+            logging.info("Coletando informações adicionais do processo.")
 
-            # Cabeçalhos atualizados
-            headers = ['Process Number', 'Polo', 'Party Name', 'CPF', 'Nome Civil', 'Data de Nascimento', 'Genitor', 'Genitora']
-            ws.append(headers)
+            process_info = {}
 
-            # Estilização dos cabeçalhos
-            bold_font = Font(bold=True)
-            for col_num, header in enumerate(headers, 1):
-                cell = ws.cell(row=1, column=col_num)
-                cell.font = bold_font
+            # Exemplo de campos e seus XPaths (os XPaths devem ser ajustados de acordo com a página real)
+            fields = {
+                'Classe': '//*[@id="classeProcesso"]',
+                'Assunto': '//*[@id="assuntoProcesso"]',
+                'Área': '//*[@id="areaProcesso"]',
+            }
 
-            # Adicionar os dados
-            for data in data_list:
-                ws.append([
-                    data.get('Process Number', ''),
-                    data.get('Polo', ''),
-                    data.get('Party Name', ''),
-                    data.get('CPF', ''),
-                    data.get('Nome Civil', ''),
-                    data.get('Data de Nascimento', ''),
-                    data.get('Genitor', ''),
-                    data.get('Genitora', '')
-                ])
+            for field_name, xpath in fields.items():
+                try:
+                    element = self.driver.find_element(By.XPATH, xpath)
+                    process_info[field_name] = element.text.strip()
+                    logging.info(f"{field_name}: {process_info[field_name]}")
+                except NoSuchElementException:
+                    logging.warning(f"{field_name} não encontrado.")
+                    process_info[field_name] = ''  # Atribuir valor padrão
 
-            # Ajustar a largura das colunas
-            for column in ws.columns:
-                max_length = 0
-                column_letter = column[0].column_letter  # Obtém a letra da coluna
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = (max_length + 2)
-                ws.column_dimensions[column_letter].width = adjusted_width
-
-            # Salvar o arquivo
-            wb.save(filename)
-            logging.info(f"Dados salvos com sucesso no arquivo '{filename}'.")
+            return process_info
 
         except Exception as e:
-            self.driver.save_screenshot("save_data_to_excel_exception.png")
-            logging.error(f"Ocorreu uma exceção ao salvar os dados no Excel. Captura de tela salva como 'save_data_to_excel_exception.png'. Erro: {e}")
+            logging.error(f"Ocorreu uma exceção ao coletar informações do processo: {e}")
+            self.driver.save_screenshot("collectProcessInfo_exception.png")
             raise e
 
-    def get_data_parties(self, process_window_handle, process_number):
+    def get_data_parties(self, process_window_handle, process_number, process_info):
         try:
             # Garantir que estamos na janela do processo
             self.driver.switch_to.window(process_window_handle)
             logging.info("Alternado para a janela do processo.")
-    
+        
             # Clicar no elemento da navbar para navegar até a seção de partes
             self.click_element('//*[@id="navbar"]/ul/li/a[1]')
             logging.info("Elemento da navbar clicado com sucesso.")
-    
+        
             # Esperar até que o polo passivo esteja presente na página
             self.wait.until(EC.presence_of_element_located((By.ID, 'poloPassivo')))
-    
+        
             # Encontrar o div com o ID do polo passivo
             polo_div = self.driver.find_element(By.ID, 'poloPassivo')
-    
+        
             # Encontrar todos os links das partes dentro do polo passivo
             party_links = polo_div.find_elements(By.CSS_SELECTOR, 'tbody tr td a')
-    
+        
             logging.info(f"Encontrado {len(party_links)} partes no polo passivo")
             logging.info(f"Links das partes: {party_links}")
-    
+        
             for index in range(len(party_links)):
                 # Atualizar a referência dos elementos para evitar StaleElementReferenceException
                 polo_div = self.driver.find_element(By.ID, 'poloPassivo')
                 party_links = polo_div.find_elements(By.CSS_SELECTOR, 'tbody tr td a')
                 party_link = party_links[index]
-    
+        
                 # Capturar o nome da parte antes de clicar no link
                 party_name = party_link.text.strip()
-    
+        
                 # Salvar os handles antes de clicar
                 handles_before_click = set(self.driver.window_handles)
-    
+        
                 # Clicar no link da parte
                 self.driver.execute_script("arguments[0].click();", party_link)
                 logging.info("Link da parte clicado")
-    
+                acutal_window = self.driver.current_window_handle
                 # Esperar por uma nova janela
                 WebDriverWait(self.driver, 10).until(EC.new_window_is_opened(handles_before_click))
-    
+        
                 handles_after_click = set(self.driver.window_handles)
                 new_handles = handles_after_click - handles_before_click
-    
-                if new_handles:
-                    party_window_handle = new_handles.pop()
-                    self.driver.switch_to.window(party_window_handle)
-                    logging.info("Aba de dados da parte aberta")
-    
-                    # Coletar dados
-                    data = self.collect_data_parties()
-                    data['Process Number'] = process_number
-                    data['Polo'] = 'Passivo'
-                    data['Party Name'] = party_name
-                    self.process_data_list.append(data)
-    
-                    # Fechar a aba de dados da parte
-                    self.driver.close()
-                    logging.info("Aba de dados da parte fechada")
-    
-                    # Retornar para a janela do processo
-                    self.driver.switch_to.window(process_window_handle)
-                    logging.info("Retornando para a janela do processo")
-                else:
-                    logging.warning("Nenhuma nova aba foi aberta após clicar no link da parte.")
-                    # Caso não tenha aberto uma nova janela, talvez seja necessário implementar lógica adicional
-    
+        
+                party_window_handle = new_handles.pop()
+                self.driver.switch_to.window(party_window_handle)
+                logging.info("Aba de dados da parte aberta")
+
+                # Coletar dados
+                data = self.collect_data_parties()
+                data['Número do Processo'] = process_number
+                data['Polo'] = 'Passivo'
+                data['Nome da Parte'] = party_name
+
+                # Adicionar informações adicionais do processo
+                data.update(process_info)
+
+                self.process_data_list.append(data)
+
+                # Fechar a aba de dados da parte
+                self.driver.close()
+                logging.info("Aba de dados da parte fechada")
+
+                # Retornar para a janela do processo
+                self.driver.switch_to.window(process_window_handle)
+                logging.info("Retornando para a janela do processo")
+
                 time.sleep(2)
-    
+
         except Exception as e:
             logging.error(f"Falha em coletar dados das partes. Erro: {e}")
             self.driver.save_screenshot("getDataParties_exception.png")
             raise e
 
-    
     def switch_to_ng_frame(self):
         """
         Alterna o contexto do Selenium para o frame 'ngFrame'.
@@ -478,9 +452,12 @@ class PJEAutomation:
                     self.driver.save_screenshot(f"click_process_{index}_exception.png")
                     continue  # Pular para o próximo processo
 
+                # Coletar informações adicionais do processo
+                process_info = self.collect_process_info()
+
                 # Navegar para a página de dados das partes e coletar dados
                 try:
-                    self.get_data_parties(process_window_handle=process_window_handle, process_number=process_number)
+                    self.get_data_parties(process_window_handle=process_window_handle, process_number=process_number, process_info=process_info)
                 except Exception as e:
                     logging.error(f"Falha ao coletar dados para o processo {process_number}: {e}")
                     self.driver.save_screenshot(f"getDataParties_{process_number}_exception.png")
@@ -503,14 +480,72 @@ class PJEAutomation:
 
             logging.info("Processamento concluído.")
 
-            # Salvar os dados coletados em um arquivo Excel após o processamento
-            if self.process_data_list:
-                self.save_data_to_excel(self.process_data_list)
+            # Retornar os dados coletados
+            return self.process_data_list
 
         except Exception as e:
             self.driver.save_screenshot("InfoPartiesProcessOnTagSearch_exception.png")
             logging.error(f"Ocorreu uma exceção em 'InfoPartiesProcessOnTagSearch'. Captura de tela salva como 'InfoPartiesProcessOnTagSearch_exception.png'. Erro: {e}")
             raise e
+
+def save_data_to_excel(data_list, filename="dados_partes.xlsx"):
+    """
+    Salva a lista de dicionários em um arquivo Excel.
+
+    :param data_list: Lista de dicionários contendo os dados a serem salvos.
+    :param filename: Nome do arquivo Excel de saída.
+    """
+    try:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "Dados das Partes"
+
+        # Cabeçalhos atualizados em português
+        headers = ['Número do Processo', 'Polo', 'Nome da Parte', 'CPF', 'Nome Civil', 'Data de Nascimento', 'Genitor', 'Genitora', 'Classe', 'Assunto', 'Área']
+        ws.append(headers)
+
+        # Estilização dos cabeçalhos
+        bold_font = Font(bold=True)
+        for col_num, header in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col_num)
+            cell.font = bold_font
+
+        # Adicionar os dados
+        for data in data_list:
+            ws.append([
+                data.get('Número do Processo', ''),
+                data.get('Polo', ''),
+                data.get('Nome da Parte', ''),
+                data.get('CPF', ''),
+                data.get('Nome Civil', ''),
+                data.get('Data de Nascimento', ''),
+                data.get('Genitor', ''),
+                data.get('Genitora', ''),
+                data.get('Classe', ''),
+                data.get('Assunto', ''),
+                data.get('Área', '')
+            ])
+
+        # Ajustar a largura das colunas
+        for column in ws.columns:
+            max_length = 0
+            column_letter = column[0].column_letter  # Obtém a letra da coluna
+            for cell in column:
+                try:
+                    if len(str(cell.value)) > max_length:
+                        max_length = len(str(cell.value))
+                except:
+                    pass
+            adjusted_width = (max_length + 2)
+            ws.column_dimensions[column_letter].width = adjusted_width
+
+        # Salvar o arquivo
+        wb.save(filename)
+        logging.info(f"Dados salvos com sucesso no arquivo '{filename}'.")
+
+    except Exception as e:
+        logging.error(f"Ocorreu uma exceção ao salvar os dados no Excel. Erro: {e}")
+        raise e
 
 def main():
     load_dotenv()
@@ -522,8 +557,9 @@ def main():
         profile = os.getenv("PROFILE")
         automation.select_profile("VARA CRIMINAL DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
 
-        automation.search_on_tag("process test")
-        automation.info_parties_process_on_tag_search()
+        automation.search_on_tag("Possivel OBT")
+        process_data_list = automation.info_parties_process_on_tag_search()
+        save_data_to_excel(process_data_list)
         time.sleep(5)
     finally:
         automation.driver.quit()
