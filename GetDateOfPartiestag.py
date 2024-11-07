@@ -6,7 +6,7 @@ from selenium.common.exceptions import (
     NoSuchElementException
 )
 from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait, Select
+from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from openpyxl import Workbook
 from openpyxl.styles import Font
@@ -286,79 +286,6 @@ class PJEAutomation:
             self.driver.save_screenshot("collectDataParties_exception.png")
             raise e
 
-    def get_data_parties(self, original_window, process_number):
-        try:
-            # Supondo que estamos na aba do processo
-            process_window_handle = self.driver.current_window_handle
-
-            # Clicar no elemento da navbar para navegar até a seção de partes
-            self.click_element('//*[@id="navbar"]/ul/li/a[1]')
-            logging.info("Elemento da navbar clicado com sucesso após sair do frame.")
-
-            # Esperar até que o polo passivo esteja presente na página
-            self.wait.until(EC.presence_of_element_located((By.ID, 'poloPassivo')))
-
-            # Encontrar o div com o ID do polo passivo
-            polo_div = self.driver.find_element(By.ID, 'poloPassivo')
-
-            # Encontrar todos os links das partes dentro do polo passivo
-            party_links = polo_div.find_elements(By.CSS_SELECTOR, 'tbody tr td a')
-
-            logging.info(f"Encontrado {len(party_links)} partes no polo passivo")
-
-            for index in range(len(party_links)):
-                # Atualizar a referência dos elementos para evitar StaleElementReferenceException
-                polo_div = self.driver.find_element(By.ID, 'poloPassivo')
-                party_links = polo_div.find_elements(By.CSS_SELECTOR, 'tbody tr td a')
-                party_link = party_links[index]
-
-                # Salvar os handles antes de clicar
-                handles_before_click = set(self.driver.window_handles)
-
-                # Clicar no link da parte
-                self.driver.execute_script("arguments[0].click();", party_link)
-                logging.info("Link da parte clicado")
-
-                # Esperar por uma nova aba
-                WebDriverWait(self.driver, 10).until(EC.new_window_is_opened(handles_before_click))
-
-                handles_after_click = set(self.driver.window_handles)
-                new_handles = handles_after_click - handles_before_click
-
-                if new_handles:
-                    data_window = new_handles.pop()
-                    self.driver.switch_to.window(data_window)
-                    logging.info("Aba de dados da parte aberta")
-
-                    # Coletar dados
-                    data = self.collect_data_parties()
-                    data['Process Number'] = process_number
-                    data['Polo'] = 'Passivo'
-                    data['Party Name'] = party_link.text.strip()
-                    self.process_data_list.append(data)
-
-                    # Fechar a aba de dados da parte
-                    self.driver.close()
-                    logging.info("Aba de dados da parte fechada")
-
-                    # Após fechar a aba, alternar para a aba restante (aba do processo)
-                    remaining_handles = self.driver.window_handles
-                    if remaining_handles:
-                        self.driver.switch_to.window(remaining_handles[0])
-                        logging.info("Retornando para a aba do processo")
-                    else:
-                        logging.error("Nenhuma janela restante após fechar a aba de dados da parte")
-                        return
-
-                    time.sleep(2)
-                else:
-                    logging.warning("Nenhuma nova aba foi aberta após clicar no link da parte.")
-
-        except Exception as e:
-            logging.error(f"Falha em coletar dados das partes. Erro: {e}")
-            self.driver.save_screenshot("getDataParties_exception.png")
-            raise e
-
     def save_data_to_excel(self, data_list, filename="dados_partes.xlsx"):
         """
         Salva a lista de dicionários em um arquivo Excel.
@@ -416,6 +343,81 @@ class PJEAutomation:
             logging.error(f"Ocorreu uma exceção ao salvar os dados no Excel. Captura de tela salva como 'save_data_to_excel_exception.png'. Erro: {e}")
             raise e
 
+    def get_data_parties(self, process_window_handle, process_number):
+        try:
+            # Garantir que estamos na janela do processo
+            self.driver.switch_to.window(process_window_handle)
+            logging.info("Alternado para a janela do processo.")
+    
+            # Clicar no elemento da navbar para navegar até a seção de partes
+            self.click_element('//*[@id="navbar"]/ul/li/a[1]')
+            logging.info("Elemento da navbar clicado com sucesso.")
+    
+            # Esperar até que o polo passivo esteja presente na página
+            self.wait.until(EC.presence_of_element_located((By.ID, 'poloPassivo')))
+    
+            # Encontrar o div com o ID do polo passivo
+            polo_div = self.driver.find_element(By.ID, 'poloPassivo')
+    
+            # Encontrar todos os links das partes dentro do polo passivo
+            party_links = polo_div.find_elements(By.CSS_SELECTOR, 'tbody tr td a')
+    
+            logging.info(f"Encontrado {len(party_links)} partes no polo passivo")
+            logging.info(f"Links das partes: {party_links}")
+    
+            for index in range(len(party_links)):
+                # Atualizar a referência dos elementos para evitar StaleElementReferenceException
+                polo_div = self.driver.find_element(By.ID, 'poloPassivo')
+                party_links = polo_div.find_elements(By.CSS_SELECTOR, 'tbody tr td a')
+                party_link = party_links[index]
+    
+                # Capturar o nome da parte antes de clicar no link
+                party_name = party_link.text.strip()
+    
+                # Salvar os handles antes de clicar
+                handles_before_click = set(self.driver.window_handles)
+    
+                # Clicar no link da parte
+                self.driver.execute_script("arguments[0].click();", party_link)
+                logging.info("Link da parte clicado")
+    
+                # Esperar por uma nova janela
+                WebDriverWait(self.driver, 10).until(EC.new_window_is_opened(handles_before_click))
+    
+                handles_after_click = set(self.driver.window_handles)
+                new_handles = handles_after_click - handles_before_click
+    
+                if new_handles:
+                    party_window_handle = new_handles.pop()
+                    self.driver.switch_to.window(party_window_handle)
+                    logging.info("Aba de dados da parte aberta")
+    
+                    # Coletar dados
+                    data = self.collect_data_parties()
+                    data['Process Number'] = process_number
+                    data['Polo'] = 'Passivo'
+                    data['Party Name'] = party_name
+                    self.process_data_list.append(data)
+    
+                    # Fechar a aba de dados da parte
+                    self.driver.close()
+                    logging.info("Aba de dados da parte fechada")
+    
+                    # Retornar para a janela do processo
+                    self.driver.switch_to.window(process_window_handle)
+                    logging.info("Retornando para a janela do processo")
+                else:
+                    logging.warning("Nenhuma nova aba foi aberta após clicar no link da parte.")
+                    # Caso não tenha aberto uma nova janela, talvez seja necessário implementar lógica adicional
+    
+                time.sleep(2)
+    
+        except Exception as e:
+            logging.error(f"Falha em coletar dados das partes. Erro: {e}")
+            self.driver.save_screenshot("getDataParties_exception.png")
+            raise e
+
+    
     def switch_to_ng_frame(self):
         """
         Alterna o contexto do Selenium para o frame 'ngFrame'.
@@ -478,7 +480,7 @@ class PJEAutomation:
 
                 # Navegar para a página de dados das partes e coletar dados
                 try:
-                    self.get_data_parties(original_window=original_window, process_number=process_number)
+                    self.get_data_parties(process_window_handle=process_window_handle, process_number=process_number)
                 except Exception as e:
                     logging.error(f"Falha ao coletar dados para o processo {process_number}: {e}")
                     self.driver.save_screenshot(f"getDataParties_{process_number}_exception.png")
@@ -497,8 +499,7 @@ class PJEAutomation:
                 except Exception as e:
                     logging.error(f"Falha ao retornar para a janela original: {e}")
 
-                # Esperar antes de processar o próximo processo
-                time.sleep(1)  # Ajuste conforme necessário
+                time.sleep(1)
 
             logging.info("Processamento concluído.")
 
@@ -521,7 +522,7 @@ def main():
         profile = os.getenv("PROFILE")
         automation.select_profile("VARA CRIMINAL DE RIO REAL / Direção de Secretaria / Diretor de Secretaria")
 
-        automation.search_on_tag("process")
+        automation.search_on_tag("process test")
         automation.info_parties_process_on_tag_search()
         time.sleep(5)
     finally:
