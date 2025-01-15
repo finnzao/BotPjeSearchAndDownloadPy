@@ -295,7 +295,6 @@ class PJEAutomation:
 
             process_info = {}
 
-            # Exemplo de campos e seus XPaths (os XPaths devem ser ajustados de acordo com a página real)
             fields = {
                 'Classe': '//*[@id="classeProcesso"]',
                 'Assunto': '//*[@id="assuntoProcesso"]',
@@ -385,7 +384,7 @@ class PJEAutomation:
                 self.driver.switch_to.window(process_window_handle)
                 logging.info("Retornando para a janela do processo")
 
-                time.sleep(2)
+                time.sleep(0.5)
 
         except Exception as e:
             logging.error(f"Falha em coletar dados das partes. Erro: {e}")
