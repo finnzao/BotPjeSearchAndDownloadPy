@@ -9,3 +9,4 @@ sshCLi.pub
 *.log
 *.xlsx
 *.csv
+*.xlsx#

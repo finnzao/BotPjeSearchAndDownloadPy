@@ -39,7 +39,7 @@ def switch_to_new_window(original_handles, timeout=20):
         else:
             raise TimeoutException("Nova janela não foi encontrada dentro do tempo especificado.")
     except TimeoutException as e:
-        driver.save_screenshot("switch_to_new_window_timeout.png")
+        save_exception_screenshot("switch_to_new_window_timeout.png")
         print("TimeoutException: Não foi possível encontrar a nova janela. Captura de tela salva como 'switch_to_new_window_timeout.png'")
         raise e
 
@@ -53,7 +53,7 @@ def switch_to_original_window(original_handle):
         driver.switch_to.window(original_handle)
         print(f"Retornado para a janela original: {original_handle}")
     except Exception as e:
-        driver.save_screenshot("switch_to_original_window_exception.png")
+        save_exception_screenshot("switch_to_original_window_exception.png")
         print(f"Exception: Ocorreu um erro ao retornar para a janela original. Captura de tela salva como 'switch_to_original_window_exception.png'. Erro: {e}")
         raise e
 
@@ -100,6 +100,21 @@ def initialize_driver():
     chrome_options.add_experimental_option("prefs", prefs)
     driver = webdriver.Chrome(options=chrome_options)
     wait = WebDriverWait(driver, 50)
+def save_exception_screenshot(filename):
+    """
+    Salva o screenshot atual do driver na pasta '.logs/exception'.
+    
+    :param filename: Nome do arquivo (ex: "meuarquivo.png")
+    """
+    # Define o diretório de destino
+    directory = ".logs/exception"
+    # Cria o diretório se não existir
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    # Gera o caminho completo do arquivo
+    filepath = os.path.join(directory, filename)
+    save_exception_screenshot(filepath)
+    print(f"Screenshot salvo em: {filepath}")
 
 @retry()
 def login(user, password):
@@ -228,7 +243,7 @@ def get_process_list():
         print(f"Número de processos encontrados: {len(processes)}")
         return processes
     except Exception as e:
-        driver.save_screenshot("get_process_list_exception.png")
+        save_exception_screenshot("get_process_list_exception.png")
         print(f"Ocorreu uma exceção ao obter a lista de processos. Erro: {e}")
         raise e
 
@@ -240,7 +255,7 @@ def click_on_process(process_element):
         print("Processo clicado com sucesso!")
         new_window_handle = switch_to_new_window(original_handles)
     except Exception as e:
-        driver.save_screenshot("click_on_process_exception.png")
+        save_exception_screenshot("click_on_process_exception.png")
         print(f"Ocorreu uma exceção ao clicar no processo. Erro: {e}")
         raise e
 
@@ -263,7 +278,7 @@ def click_element(xpath):
             driver.execute_script("arguments[0].click();", element)
             print(f"Elemento clicado com sucesso usando JavaScript: {xpath}")
     except Exception as e:
-        driver.save_screenshot("click_element_exception.png")
+        save_exception_screenshot("click_element_exception.png")
         print(f"Ocorreu uma exceção ao clicar no elemento. Captura de tela salva como 'click_element_exception.png'. Erro: {e}")
         raise e
 
@@ -282,7 +297,7 @@ def select_tipo_documento(tipoDocumento):
         select.select_by_visible_text(tipoDocumento)
         print(f"Tipo de documento '{tipoDocumento}' selecionado com sucesso.")
     except Exception as e:
-        driver.save_screenshot("select_tipo_documento_exception.png")
+        save_exception_screenshot("select_tipo_documento_exception.png")
         print(f"Ocorreu uma exceção ao selecionar o tipo de documento. Captura de tela salva como 'select_tipo_documento_exception.png'. Erro: {e}")
         raise e
 
@@ -346,7 +361,7 @@ def downloadProcessOnTagSearch(typeDocument):
         return process_numbers  # Retorna a lista de números de processo
 
     except Exception as e:
-        driver.save_screenshot("downloadProcessOnTagSearch_exception.png")
+        save_exception_screenshot("downloadProcessOnTagSearch_exception.png")
         print(f"Ocorreu uma exceção em 'downloadProcessOnTagSearch'. Captura de tela salva. Erro: {e}")
         raise e
 
@@ -401,7 +416,7 @@ def download_requested_processes(process_numbers):
         print("Voltando para o conteúdo principal.")
 
     except Exception as e:
-        driver.save_screenshot("download_requested_processes_exception.png")
+        save_exception_screenshot("download_requested_processes_exception.png")
         print(f"Ocorreu uma exceção em 'download_requested_processes'. Captura de tela salva. Erro: {e}")
         raise e
 
