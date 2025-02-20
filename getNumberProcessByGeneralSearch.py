@@ -59,24 +59,36 @@ def search_process(optionSearch):
     icon_search_button.click()
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'frameConsultaProcessual')))
 
-    ElementoNumOrgaoJutica = wait.until(EC.presence_of_element_located((By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica')))
+    ElementoNumOrgaoJutica = wait.until(
+        EC.presence_of_element_located((By.ID, 'fPP:numeroProcesso:NumeroOrgaoJustica'))
+    )
     ElementoNumOrgaoJutica.send_keys(optionSearch.get('numOrgaoJustica'))
 
     # Caso a busca utilize OAB
     if optionSearch.get('estadoOAB'):
-        ElementoNumeroOAB = wait.until(EC.presence_of_element_located((By.ID, 'fPP:decorationDados:numeroOAB')))
+        ElementoNumeroOAB = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:decorationDados:numeroOAB'))
+        )
         ElementoNumeroOAB.send_keys(optionSearch.get('numeroOAB'))
-        ElementoEstadosOAB = wait.until(EC.presence_of_element_located((By.ID, 'fPP:decorationDados:ufOABCombo')))
+        ElementoEstadosOAB = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:decorationDados:ufOABCombo'))
+        )
         listaEstadosOAB = Select(ElementoEstadosOAB)
-        listaEstadosOAB.select_by_value(optionSearch.get('estadoOAB'))  # Exemplo: 'BA'
+        listaEstadosOAB.select_by_value(optionSearch.get('estadoOAB'))
 
-    consulta_classe = wait.until(EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial')))
+    consulta_classe = wait.until(
+        EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial'))
+    )
     consulta_classe.send_keys(optionSearch.get('classeJudicial'))
 
-    ElementonomeDaParte = wait.until(EC.presence_of_element_located((By.ID, 'fPP:j_id150:nomeParte')))
+    ElementonomeDaParte = wait.until(
+        EC.presence_of_element_located((By.ID, 'fPP:j_id150:nomeParte'))
+    )
     ElementonomeDaParte.send_keys(optionSearch.get('nomeParte'))
 
-    btnProcurarProcesso = wait.until(EC.presence_of_element_located((By.ID, 'fPP:searchProcessos')))
+    btnProcurarProcesso = wait.until(
+        EC.presence_of_element_located((By.ID, 'fPP:searchProcessos'))
+    )
     btnProcurarProcesso.click()
 
 def get_total_pages():
@@ -104,9 +116,21 @@ def get_total_pages():
         logging.error(f"Erro ao obter o número total de páginas: {e}")
         return 0
 
-def collect_process_numbers():
-    WebDriverWait(driver, 50).until(EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb')))
-    numProcessos = []
+def collect_process_date():
+    """
+    Coleta os dados dos processos, extraindo as seguintes informações:
+      - Número do Processo
+      - Órgão Julgador
+      - Autuado em
+      - Classe Judicial
+      - Polo Ativo
+      - Polo Passivo
+      - Última Movimentação
+    """
+    WebDriverWait(driver, 50).until(
+        EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb'))
+    )
+    process_data_list = []
     max_itens_por_pagina = 20  # Ajuste esse valor se necessário
 
     total_pages = get_total_pages()
@@ -123,13 +147,43 @@ def collect_process_numbers():
 
         for row in rows:
             try:
-                first_td = row.find_element(By.XPATH, "./td[1]")
-                a_tag = first_td.find_element(By.TAG_NAME, "a")
-                numero_do_processo = a_tag.get_attribute('title')
-                logging.info(f"Processo encontrado: {numero_do_processo}")
-                numProcessos.append(numero_do_processo)
+                cells = row.find_elements(By.TAG_NAME, "td")
+                if len(cells) < 9:
+                    logging.warning("Número insuficiente de colunas na linha, pulando.")
+                    continue
+
+                try:
+                    a_tag = cells[0].find_element(By.TAG_NAME, "a")
+                    numero_do_processo = a_tag.get_attribute('title').strip()
+                except Exception:
+                    numero_do_processo = cells[0].text.strip()
+
+                # Extração dos demais dados conforme a posição das células (0-indexed):
+                # cells[2] => Órgão Julgador
+                # cells[3] => Autuado em
+                # cells[4] => Classe Judicial
+                # cells[5] => Polo Ativo
+                # cells[6] => Polo Passivo
+                # cells[8] => Última Movimentação
+                orgao_julgador     = cells[2].text.strip()
+                autuado_em         = cells[3].text.strip()
+                classe_judicial    = cells[4].text.strip()
+                polo_ativo         = cells[5].text.strip()
+                polo_passivo       = cells[6].text.strip()
+                ultima_movimentacao = cells[8].text.strip()
+
+                process_data_list.append({
+                    "Número do Processo": numero_do_processo,
+                    "Órgão Julgador": orgao_julgador,
+                    "Autuado em": autuado_em,
+                    "Classe Judicial": classe_judicial,
+                    "Polo Ativo": polo_ativo,
+                    "Polo Passivo": polo_passivo,
+                    "Última Movimentação": ultima_movimentacao
+                })
+                logging.info(f"Processo coletado: {numero_do_processo}")
             except Exception as e:
-                logging.error(f"Não foi possível extrair o número do processo na linha: {e}")
+                logging.error(f"Erro ao extrair dados da linha: {e}")
                 continue
 
         if page_num < total_pages:
@@ -147,7 +201,7 @@ def collect_process_numbers():
             logging.info("Última página alcançada.")
             time.sleep(2)
 
-    return numProcessos
+    return process_data_list
 
 def save_to_json(data, filename="ResultadoProcessosPesquisa.json"):
     dir_path = "./docs"
@@ -164,43 +218,34 @@ def save_to_json(data, filename="ResultadoProcessosPesquisa.json"):
 def save_data_to_excel(data_list, filename="./docs/dados_partes.xlsx"):
     """
     Salva a lista de dicionários em um arquivo Excel.
-
-    :param data_list: Lista de dicionários contendo os dados a serem salvos.
-    :param filename: Nome do arquivo Excel de saída.
+    Dados salvos: Número do Processo, Órgão Julgador, Autuado em, Classe Judicial, Polo Ativo, Polo Passivo, Última Movimentação.
     """
     try:
         wb = Workbook()
         ws = wb.active
-        ws.title = "Dados das Partes"
+        ws.title = "Dados dos Processos"
 
-        # Cabeçalhos atualizados em português
-        headers = ['Número do Processo', 'Polo', 'Nome da Parte', 'CPF', 'Nome Civil', 
-                   'Data de Nascimento', 'Genitor', 'Genitora', 'Classe', 'Assunto', 'Área']
+        headers = ['Número do Processo', 'Órgão Julgador', 'Autuado em', 'Classe Judicial',
+                   'Polo Ativo', 'Polo Passivo', 'Última Movimentação']
         ws.append(headers)
 
-        # Estilização dos cabeçalhos
         bold_font = Font(bold=True)
         for col_num, header in enumerate(headers, 1):
             cell = ws.cell(row=1, column=col_num)
             cell.font = bold_font
 
-        # Adicionar os dados
         for data in data_list:
             ws.append([
                 data.get('Número do Processo', ''),
-                data.get('Polo', ''),
-                data.get('Nome da Parte', ''),
-                data.get('CPF', ''),
-                data.get('Nome Civil', ''),
-                data.get('Data de Nascimento', ''),
-                data.get('Genitor', ''),
-                data.get('Genitora', ''),
-                data.get('Classe', ''),
-                data.get('Assunto', ''),
-                data.get('Área', '')
+                data.get('Órgão Julgador', ''),
+                data.get('Autuado em', ''),
+                data.get('Classe Judicial', ''),
+                data.get('Polo Ativo', ''),
+                data.get('Polo Passivo', ''),
+                data.get('Última Movimentação', '')
             ])
 
-        # Ajustar a largura das colunas
+        # Ajusta a largura das colunas automaticamente
         for column in ws.columns:
             max_length = 0
             column_letter = column[0].column_letter
@@ -215,7 +260,6 @@ def save_data_to_excel(data_list, filename="./docs/dados_partes.xlsx"):
 
         wb.save(filename)
         logging.info(f"Dados salvos com sucesso no arquivo '{filename}'.")
-
     except Exception as e:
         logging.error(f"Ocorreu uma exceção ao salvar os dados no Excel. Erro: {e}")
         raise e
@@ -231,7 +275,7 @@ def main():
         'Assunto': '',
         'NomeDoRepresentante': '',
         'Alcunha': '',
-        'classeJudicial': 'AUTO DE PRISÃO EM FLAGRANTE',
+        'classeJudicial': 'INQUÉRITO POLICIAL',
         'numDoc': '',
         'estadoOAB': '',
         'numeroOAB': ''
@@ -243,34 +287,14 @@ def main():
     select_profile(profile)
     search_process(optionSearch)
     time.sleep(20)
-    process_numbers = collect_process_numbers()
+    process_data = collect_process_date()
     driver.quit()
 
-    logging.info(f"Números de processos coletados: {process_numbers}")
+    logging.info(f"Dados dos processos coletados: {process_data}")
 
-    # Salvar os números dos processos em formato JSON
-    if process_numbers:
-        save_to_json(process_numbers)
-
-        # Montar a lista de dicionários para salvar em Excel.
-        # Aqui, preenchemos apenas o 'Número do Processo' e deixamos os demais campos vazios.
-        data_list = []
-        for num in process_numbers:
-            data_list.append({
-                'Número do Processo': num,
-                'Polo': '',
-                'Nome da Parte': '',
-                'CPF': '',
-                'Nome Civil': '',
-                'Data de Nascimento': '',
-                'Genitor': '',
-                'Genitora': '',
-                'Classe': '',
-                'Assunto': '',
-                'Área': ''
-            })
-
-        save_data_to_excel(data_list)
+    if process_data:
+        save_to_json(process_data)
+        save_data_to_excel(process_data)
     else:
         logging.info("Nenhum processo encontrado para salvar.")
 
