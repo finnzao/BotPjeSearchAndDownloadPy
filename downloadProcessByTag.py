@@ -1,5 +1,5 @@
 import re
-import json  # Importado para salvar erros em JSON
+import json
 import time
 import os
 from functools import wraps
@@ -335,11 +335,17 @@ def downloadProcessOnTagSearch(typeDocument):
     print("Processamento concluído.")
     return process_numbers
 
-def download_requested_processes(process_numbers):
+def download_requested_processes(process_numbers, etiqueta):
     """
     Acessa a página de requisição de downloads e baixa os processos listados,
-    evitando downloads duplicados.
+    registrando em um arquivo JSON os processos baixados e os não encontrados.
     """
+    resultados = {
+        "nomeEtiqueta": etiqueta,
+        "ProcessosBaixados": [],
+        "ProcessosNãoEncontrados": []
+    }
+    
     try:
         driver.get('https://pje.tjba.jus.br/pje/AreaDeDownload/listView.seam')
         wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
@@ -349,30 +355,39 @@ def download_requested_processes(process_numbers):
         rows = wait.until(EC.presence_of_all_elements_located((By.XPATH, "//table//tbody//tr")))
         print(f"Número total de processos na lista de downloads: {len(rows)}")
         downloaded_process_numbers = set()
-
+        
         for row in rows:
             process_number_td = row.find_element(By.XPATH, "./td[1]")
             process_number = process_number_td.text.strip()
             print(f"Verificando o processo: {process_number}")
-            print(f"Números de processos a serem baixados: {process_numbers}")
-
+            
             if process_number in process_numbers and process_number not in downloaded_process_numbers:
                 print(f"Processo {process_number} encontrado e ainda não baixado. Iniciando download...")
                 download_button = row.find_element(By.XPATH, "./td[last()]//button")
                 driver.execute_script("arguments[0].scrollIntoView(true);", download_button)
                 download_button.click()
                 downloaded_process_numbers.add(process_number)
+                resultados["ProcessosBaixados"].append(process_number)
                 time.sleep(5)
-            else:
-                print(f"Processo {process_number} não está na lista ou já foi baixado. Pulando...")
-
+            
+        # Identificar processos que não foram encontrados na lista de downloads
+        processos_nao_encontrados = [proc for proc in process_numbers if proc not in downloaded_process_numbers]
+        resultados["ProcessosNãoEncontrados"].extend(processos_nao_encontrados)
+        
         driver.switch_to.default_content()
         print("Voltando para o conteúdo principal.")
-
+        
     except Exception as e:
         save_exception_screenshot("download_requested_processes_exception.png")
         print(f"Erro em 'download_requested_processes'. Captura de tela salva. Erro: {e}")
-        raise e
+    
+    # Salvar os resultados no JSON
+    json_filename = f"processos_download_{etiqueta}.json"
+    with open(json_filename, "w", encoding="utf-8") as f:
+        json.dump(resultados, f, ensure_ascii=False, indent=4)
+    print(f"Resultados salvos em {json_filename}.")
+    
+    return resultados
 
 def main():
     load_dotenv()

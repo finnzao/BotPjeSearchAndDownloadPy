@@ -64,7 +64,6 @@ def search_process(optionSearch):
     )
     ElementoNumOrgaoJutica.send_keys(optionSearch.get('numOrgaoJustica'))
 
-    # Caso a busca utilize OAB
     if optionSearch.get('estadoOAB'):
         ElementoNumeroOAB = wait.until(
             EC.presence_of_element_located((By.ID, 'fPP:decorationDados:numeroOAB'))
@@ -75,6 +74,12 @@ def search_process(optionSearch):
         )
         listaEstadosOAB = Select(ElementoEstadosOAB)
         listaEstadosOAB.select_by_value(optionSearch.get('estadoOAB'))
+
+    if optionSearch.get('dataAutuacaoDe'):
+        ElementoDataAutuacao = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoInicioInputDate'))
+        )
+        ElementoDataAutuacao.send_keys(optionSearch.get('dataAutuacaoDe'))
 
     consulta_classe = wait.until(
         EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial'))
@@ -269,18 +274,8 @@ def main():
     initialize_driver()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
     profile = os.getenv("PROFILE")
-    optionSearch = {
-        'nomeParte': '',
-        'numOrgaoJustica': '0216',
-        'Assunto': '',
-        'NomeDoRepresentante': '',
-        'Alcunha': '',
-        'classeJudicial': 'INQUÉRITO POLICIAL',
-        'numDoc': '',
-        'estadoOAB': '',
-        'numeroOAB': ''
-    }
-
+    with open('config.json', 'r') as f:
+        optionSearch = json.load(f)
     login(user, password)
     # Caso seja necessário pular o token, descomente a próxima linha:
     # skip_token()
