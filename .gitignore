@@ -10,3 +10,4 @@ sshCLi.pub
 *.xlsx
 *.csv
 *.xlsx#
+config.json

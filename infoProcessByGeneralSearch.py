@@ -81,6 +81,12 @@ def search_process(optionSearch):
         )
         ElementoDataAutuacao.send_keys(optionSearch.get('dataAutuacaoDe'))
 
+    if optionSearch.get('dataAutuacaoAte'):
+        ElementoDataAutuacaoAte = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoFimInputDate'))
+        )
+        ElementoDataAutuacaoAte.send_keys(optionSearch.get('dataAutuacaoAte'))
+
     consulta_classe = wait.until(
         EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial'))
     )

@@ -1,6 +1,6 @@
 {
     "nomeParte": "",
-    "numOrgaoJustica": "",
+    "numOrgaoJustica": "0216",
     "Assunto": "",
     "NomeDoRepresentante": "",
     "Alcunha": "",
@@ -8,5 +8,6 @@
     "numDoc": "",
     "estadoOAB": "",
     "numeroOAB": "",
-    "dataAutuacaoDe": ""
+    "dataAutuacaoDe": "27/02/2025",
+    "dataAutuacaoAte": "06/03/2025"
 }
