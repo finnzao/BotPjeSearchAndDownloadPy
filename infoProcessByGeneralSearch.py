@@ -6,7 +6,6 @@ import time
 import logging
 from dotenv import load_dotenv
 
-from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait, Select
 from selenium.webdriver.support import expected_conditions as EC
@@ -14,42 +13,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from openpyxl import Workbook
 from openpyxl.styles import Font
 
+from utils.pje_automation import PjeConsultaAutomator
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Variáveis globais para o driver e o wait
 driver = None
 wait = None
-
-def initialize_driver():
-    global driver, wait
-    driver = webdriver.Chrome()
-    wait = WebDriverWait(driver, 20)
-
-def login(user, password):
-    login_url = 'https://pje.tjba.jus.br/pje/login.seam'
-    driver.get(login_url)
-    wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ssoFrame')))
-    username_input = wait.until(EC.presence_of_element_located((By.ID, 'username')))
-    password_input = wait.until(EC.presence_of_element_located((By.ID, 'password')))
-    login_button = wait.until(EC.presence_of_element_located((By.ID, 'kc-login')))
-    username_input.send_keys(user)
-    password_input.send_keys(password)
-    login_button.click()
-    driver.switch_to.default_content()
-
-def skip_token():
-    proceed_button = wait.until(
-        EC.element_to_be_clickable((By.XPATH, "//a[contains(text(),'Prosseguir sem o Token')]"))
-    )
-    proceed_button.click()
-
-def select_profile(profile):
-    dropdown = wait.until(EC.presence_of_element_located((By.CLASS_NAME, 'dropdown-toggle')))
-    dropdown.click()
-    button_xpath = f"//a[contains(text(), '{profile}')]"
-    desired_button = wait.until(EC.element_to_be_clickable((By.XPATH, button_xpath)))
-    driver.execute_script("arguments[0].scrollIntoView(true);", desired_button)
-    driver.execute_script("arguments[0].click();", desired_button)
 
 def search_process(optionSearch):
     wait.until(EC.frame_to_be_available_and_switch_to_it((By.ID, 'ngFrame')))
@@ -86,6 +55,17 @@ def search_process(optionSearch):
             EC.presence_of_element_located((By.ID, 'fPP:dataAutuacaoDecoration:dataAutuacaoFimInputDate'))
         )
         ElementoDataAutuacaoAte.send_keys(optionSearch.get('dataAutuacaoAte'))
+
+    if optionSearch.get('Assunto'):
+        ElementoAssunto = wait.until(
+            EC.presence_of_element_located((By.ID, 'fPP:j_id236:assunto'))
+        )
+        ElementoAssunto.send_keys(optionSearch.get('Assunto'))
+
+    btnProcurarProcesso = wait.until(
+        EC.presence_of_element_located((By.ID, 'fPP:searchProcessos'))
+    )
+    btnProcurarProcesso.click()
 
     consulta_classe = wait.until(
         EC.presence_of_element_located((By.ID, 'fPP:j_id245:classeJudicial'))
@@ -128,22 +108,10 @@ def get_total_pages():
         return 0
 
 def collect_process_date():
-    """
-    Coleta os dados dos processos, extraindo as seguintes informações:
-      - Número do Processo
-      - Órgão Julgador
-      - Autuado em
-      - Classe Judicial
-      - Polo Ativo
-      - Polo Passivo
-      - Última Movimentação
-    """
     WebDriverWait(driver, 50).until(
         EC.presence_of_element_located((By.ID, 'fPP:processosTable:tb'))
     )
     process_data_list = []
-    max_itens_por_pagina = 20  # Ajuste esse valor se necessário
-
     total_pages = get_total_pages()
     logging.info(f"Total de páginas para processar: {total_pages}")
 
@@ -159,7 +127,7 @@ def collect_process_date():
         for row in rows:
             try:
                 cells = row.find_elements(By.TAG_NAME, "td")
-                if len(cells) < 9:
+                if len(cells) < 10:
                     logging.warning("Número insuficiente de colunas na linha, pulando.")
                     continue
 
@@ -169,20 +137,13 @@ def collect_process_date():
                 except Exception:
                     numero_do_processo = cells[0].text.strip()
 
-                # Extração dos demais dados conforme a posição das células (0-indexed):
-                # cells[2] => Órgão Julgador
-                # cells[3] => Autuado em
-                # cells[4] => Classe Judicial
-                # cells[5] => Polo Ativo
-                # cells[6] => Polo Passivo
-                # cells[8] => Última Movimentação
-                orgao_julgador     = cells[2].text.strip()
-                autuado_em         = cells[3].text.strip()
-                classe_judicial    = cells[4].text.strip()
-                polo_ativo         = cells[5].text.strip()
-                polo_passivo       = cells[6].text.strip()
-                ultima_movimentacao = cells[8].text.strip()
-
+                orgao_julgador = cells[2].text.strip()
+                autuado_em = cells[4].text.strip()
+                classe_judicial = cells[5].text.strip()
+                polo_ativo = cells[6].text.strip()
+                polo_passivo = cells[7].text.strip()
+                ultima_movimentacao = cells[9].text.strip()
+                
                 process_data_list.append({
                     "Número do Processo": numero_do_processo,
                     "Órgão Julgador": orgao_julgador,
@@ -192,6 +153,7 @@ def collect_process_date():
                     "Polo Passivo": polo_passivo,
                     "Última Movimentação": ultima_movimentacao
                 })
+
                 logging.info(f"Processo coletado: {numero_do_processo}")
             except Exception as e:
                 logging.error(f"Erro ao extrair dados da linha: {e}")
@@ -214,23 +176,8 @@ def collect_process_date():
 
     return process_data_list
 
-def save_to_json(data, filename="ResultadoProcessosPesquisa.json"):
-    dir_path = "./docs"
-    file_path = f"{dir_path}/{filename}"
 
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
-
-    with open(file_path, 'w', encoding='utf-8') as json_file:
-        json.dump(data, json_file, ensure_ascii=False, indent=4)
-
-    logging.info(f"Arquivo '{file_path}' criado com sucesso.")
-
-def save_data_to_excel(data_list, filename="./docs/dados_partes.xlsx"):
-    """
-    Salva a lista de dicionários em um arquivo Excel.
-    Dados salvos: Número do Processo, Órgão Julgador, Autuado em, Classe Judicial, Polo Ativo, Polo Passivo, Última Movimentação.
-    """
+def save_data_to_excel(data_list, filename="./docs/Pesqisa_Geral_Dados.xlsx"):
     try:
         wb = Workbook()
         ws = wb.active
@@ -256,7 +203,6 @@ def save_data_to_excel(data_list, filename="./docs/dados_partes.xlsx"):
                 data.get('Última Movimentação', '')
             ])
 
-        # Ajusta a largura das colunas automaticamente
         for column in ws.columns:
             max_length = 0
             column_letter = column[0].column_letter
@@ -270,31 +216,38 @@ def save_data_to_excel(data_list, filename="./docs/dados_partes.xlsx"):
             ws.column_dimensions[column_letter].width = adjusted_width
 
         wb.save(filename)
-        logging.info(f"Dados salvos com sucesso no arquivo '{filename}'.")
+        logging.info(f"Dados salvos com sucesso no xlsx '{filename}'.")
     except Exception as e:
         logging.error(f"Ocorreu uma exceção ao salvar os dados no Excel. Erro: {e}")
         raise e
 
 def main():
+    global driver, wait
+
     load_dotenv()
-    initialize_driver()
     user, password = os.getenv("USER"), os.getenv("PASSWORD")
     profile = os.getenv("PROFILE")
-    with open('config.json', 'r') as f:
-        optionSearch = json.load(f)
-    login(user, password)
-    # Caso seja necessário pular o token, descomente a próxima linha:
-    # skip_token()
-    select_profile(profile)
+
+    bot = PjeConsultaAutomator()
+    driver = bot.driver
+    wait = bot.wait
+    config = bot.loadConfig()
+    optionSearch = config["optionSearch"]
+
+    bot.login(user, password)
+    # bot.skip_token()
+    bot.select_profile(profile)
+
     search_process(optionSearch)
     time.sleep(20)
+
     process_data = collect_process_date()
-    driver.quit()
+    bot.close()
 
-    logging.info(f"Dados dos processos coletados: {process_data}")
-
+    logging.info(f"Dados dos processos coletados com sucesso")
+    logging.info(f"Salvando dados json...")
     if process_data:
-        save_to_json(process_data)
+        bot.save_to_json(process_data,filename="PesquisaGeral")
         save_data_to_excel(process_data)
     else:
         logging.info("Nenhum processo encontrado para salvar.")
